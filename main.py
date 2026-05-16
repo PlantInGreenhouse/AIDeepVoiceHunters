@@ -90,11 +90,12 @@ async def analyze(
                 break  
 
         print("server end")
+        print("test")
 
         return {
-            "riskScore": prob,
+            "riskScore": str(f"{prob:.2f}"),
             "summary": summary,
-            "spoofPoint": point,
+            "spoofPoint": str(f"{point:.2f}"),
         }
 
     except Exception as e:

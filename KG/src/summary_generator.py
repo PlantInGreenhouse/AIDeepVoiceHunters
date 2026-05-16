@@ -172,7 +172,7 @@ def build_summary_prompt_from_graph(graph_dict: Dict[str, Any]) -> str:
 - 탐지 유형: {spoof_type}
 - 위험도: {level}
 - 탐지 확신도: {confidence}
-- 탐지 구간: {point}{unit}
+- 탐지 구간: {point:.2f}{unit}
 
 관측 근거:
 {issue_lines}
@@ -181,7 +181,7 @@ def build_summary_prompt_from_graph(graph_dict: Dict[str, Any]) -> str:
 {action_lines}
 
 예시:
-딥보이스 탐지 가능성이 높은 구간은 {point}초 부근에서 의심 신호가 탐지되었습니다. 위험도가 높으므로, 저장된 번호로 직접 확인하거나 송금 및 인증번호 전달을 중단하는 것이 권장됩니다.
+딥보이스 탐지 가능성이 높은 구간은 {point:.2f}초 부근에서 의심 신호가 탐지되었습니다. 위험도가 높으므로, 저장된 번호로 직접 확인하거나 송금 및 인증번호 전달을 중단하는 것이 권장됩니다.
 
 출력:
 """.strip()
