@@ -117,6 +117,14 @@ class Dataset_Deepvoice(Dataset): #train / test 겸용
         Ref_pad = pad_random(Ref, self.cut)
         ref_inp = Tensor(Ref_pad)
 
+        ###_---
+        noise_factor = 0.005 
+        x_inp = x_inp + noise_factor * torch.randn_like(x_inp)
+        ref_inp = ref_inp + noise_factor * torch.randn_like(ref_inp)
+        # sf.write("n_x.flac", x_inp, x_sr)
+        # sf.write("n_ref.flac", ref_inp, ref_sr)
+        #-----
+
         
         y = self.labels[index]
         return x_inp, y, ref_inp
