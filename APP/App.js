@@ -20,9 +20,8 @@ import {
 } from 'expo-audio';
 
 const FLOW_STEPS = [
-  { title: '시작', detail: 'Voice Pass 소개' },
-  { title: '음성 등록', detail: '가족/지인 목소리 신분증 생성' },
-  { title: '등록 완료', detail: '기준 음성 저장 완료' },
+  { title: '홈', detail: '등록된 가족 목소리 관리' },
+  { title: '가족 추가', detail: '새 가족 목소리 등록' },
   { title: '통화 분석', detail: '현재 통화 음성 분석 중' },
   { title: '결과', detail: '일치 / 주의 / 위험' },
   { title: '판단 근거', detail: '모델이 본 이상 신호' },
@@ -34,15 +33,25 @@ const RECORD_SECONDS = 5;
 
 export default function App() {
   const [screenIndex, setScreenIndex] = useState(0);
-  const [registration, setRegistration] = useState(null);
+  const [familyList, setFamilyList] = useState([]);  // 등록된 가족 목록
 
   const currentStep = FLOW_STEPS[screenIndex];
   const progress = `${screenIndex + 1} / ${FLOW_STEPS.length}`;
 
- 
-  const handleRegister = (data) => {
-    setRegistration(data);
-    setScreenIndex(2);
+  // 가족 추가
+  const handleAddFamily = (data) => {
+    const newMember = {
+      id: Date.now().toString(),
+      ...data,
+    };
+    setFamilyList((prev) => [...prev, newMember]);
+    setScreenIndex(0);  // 홈으로
+    Alert.alert('등록 완료', `${data.name}님의 음성이 등록되었습니다.`);
+  };
+
+  // 가족 삭제
+  const handleDeleteFamily = (id) => {
+    setFamilyList((prev) => prev.filter((m) => m.id !== id));
   };
 
   return (
@@ -53,14 +62,18 @@ export default function App() {
         <Text style={styles.headerSubtitle}>{currentStep.title} · {progress}</Text>
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* ← ScrollView 내용을 조건부 렌더링으로 변경 */}
         {screenIndex === 0 && (
-          <StartScreen onStart={() => setScreenIndex(1)} />
+          <HomeScreen
+            familyList={familyList}
+            onAddFamily={() => setScreenIndex(1)}
+            onStartAnalysis={() => setScreenIndex(2)}
+            onDeleteFamily={handleDeleteFamily}
+          />
         )}
         {screenIndex === 1 && (
           <RegisterScreen
             onBack={() => setScreenIndex(0)}
-            onComplete={handleRegister}
+            onComplete={handleAddFamily}
           />
         )}
       </ScrollView>
@@ -68,18 +81,82 @@ export default function App() {
   );
 }
 
-function StartScreen({ onStart }) {
+function HomeScreen({ familyList, onAddFamily, onStartAnalysis, onDeleteFamily }) {
+  const handleDelete = (id, name) => {
+    Alert.alert(
+      '음성 삭제',
+      `${name}님의 등록된 음성을 삭제할까요?`,
+      [
+        { text: '취소', style: 'cancel' },
+        { text: '삭제', style: 'destructive', onPress: () => onDeleteFamily(id) },
+      ]
+    );
+  };
+
   return (
     <View style={styles.screen}>
+      {/* 헤더 카드 */}
       <View style={styles.heroCard}>
         <Text style={styles.heroEmoji}>🛡️</Text>
         <Text style={styles.heroTitle}>Voice Pass</Text>
         <Text style={styles.heroSubtitle}>
-          가족의 목소리를 미리 등록하고, 의심스러운 통화 음성과 비교해 보이스피싱/딥보이스 위험을 알려드립니다.
+          가족의 목소리를 등록하고, 의심스러운 통화로부터 보호하세요.
         </Text>
       </View>
-      <TouchableOpacity style={styles.primaryButton} onPress={onStart}>
-        <Text style={styles.primaryButtonText}>시작하기</Text>
+
+      {/* 등록된 가족 목록 */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>등록된 가족</Text>
+        <Text style={styles.sectionBadge}>{familyList.length}명</Text>
+      </View>
+
+      {familyList.length === 0 ? (
+        <View style={styles.emptyCard}>
+          {/* <Text style={styles.emptyEmoji}>👨‍👩‍👧</Text> */}
+          <Text style={styles.emptyTitle}>등록된 가족이 없습니다</Text>
+          <Text style={styles.emptyDesc}>
+            아래 "가족 추가" 버튼을 눌러 첫 가족 목소리를 등록해보세요.
+          </Text>
+        </View>
+      ) : (
+        familyList.map((member) => (
+          <View key={member.id} style={styles.memberCard}>
+            <View style={styles.memberInfo}>
+              <Text style={styles.memberAvatar}>👤</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.memberName}>{member.name}</Text>
+                <Text style={styles.memberRelation}>
+                  {member.relation}
+                  {member.phone ? ` · ${member.phone}` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDelete(member.id, member.name)}
+              >
+                <Text style={styles.deleteButtonText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))
+      )}
+
+      {/* 가족 추가 버튼 */}
+      <TouchableOpacity style={styles.addButton} onPress={onAddFamily}>
+        <Text style={styles.addButtonText}>+ 가족 추가</Text>
+      </TouchableOpacity>
+
+      {/* 통화 분석 시작 버튼 (가족이 1명 이상일 때만 활성화) */}
+      <TouchableOpacity
+        style={[
+          styles.primaryButton,
+          { marginTop: 16 },
+          familyList.length === 0 && styles.primaryButtonDisabled,
+        ]}
+        onPress={onStartAnalysis}
+        disabled={familyList.length === 0}
+      >
+        <Text style={styles.primaryButtonText}>🎙️ 통화 분석 시작</Text>
       </TouchableOpacity>
     </View>
   );
@@ -161,7 +238,7 @@ function RegisterScreen({ onBack, onComplete }) {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.sectionTitle}>가족/지인 음성 등록</Text>
+      <Text style={styles.sectionTitle}>새 가족 추가</Text>
       <Text style={styles.sectionDesc}>
         평소 통화 환경에서 5초 정도 자연스럽게 말해주세요. (예: "여보세요, 나야. 잠깐 통화 가능해?")
       </Text>
@@ -230,7 +307,7 @@ function RegisterScreen({ onBack, onComplete }) {
           onPress={handleSubmit}
           disabled={!canSubmit}
         >
-          <Text style={styles.primaryButtonText}>등록 완료</Text>
+          <Text style={styles.primaryButtonText}>등록하기</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -375,5 +452,100 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: '#374151',
     fontWeight: '800',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  sectionBadge: {
+    backgroundColor: '#EEF2FF',
+    color: '#243B80',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  emptyCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
+  emptyEmoji: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  emptyDesc: {
+    color: '#6B7280',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  memberCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  memberAvatar: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  memberRelation: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+  },
+  deleteButtonText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  addButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#243B80',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  addButtonText: {
+    color: '#243B80',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });
