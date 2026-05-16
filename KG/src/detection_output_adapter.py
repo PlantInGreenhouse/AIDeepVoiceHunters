@@ -3,14 +3,11 @@
 from detection_output_adapter import create_detection_output_json
 
 confidence = 0.88
-start = 8.2
-end = 12.6
+point = 8.2
 
 create_detection_output_json(
     confidence=confidence,
-    start=start,
-    end=end,
-)    
+    point=point,)    
 """
 
 import json
@@ -22,7 +19,7 @@ from config import INPUT_PATH, DEFAULT_CALL_ID, DEFAULT_USER_ID
 
 def build_detection_output(
     confidence: float,
-    start: float,
+    point: float,
     end: float,
     segment_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -31,8 +28,7 @@ def build_detection_output(
 
     Detection model output:
     - confidence
-    - callSegment start
-    - callSegment end
+    - callSegment point
 
     callId and userId are loaded from config.py.
     """
@@ -40,11 +36,9 @@ def build_detection_output(
     if not 0.0 <= confidence <= 1.0:
         raise ValueError(f"confidence must be between 0 and 1. Got: {confidence}")
 
-    if start < 0:
-        raise ValueError(f"start must be greater than or equal to 0. Got: {start}")
+    if point < 0:
+        raise ValueError(f"point must be greater than or equal to 0. Got: {point}")
 
-    if end <= start:
-        raise ValueError(f"end must be greater than start. Got start={start}, end={end}")
 
     if segment_id is None:
         segment_id = f"SEG_{DEFAULT_CALL_ID}_001"
@@ -55,8 +49,7 @@ def build_detection_output(
         "detectedSegments": [
             {
                 "segmentId": segment_id,
-                "start": start,
-                "end": end,
+                "point": point,
                 "confidence": confidence,
             }
         ],
@@ -80,8 +73,7 @@ def save_detection_output(
 
 def create_detection_output_json(
     confidence: float,
-    start: float,
-    end: float,
+    point: float,
     output_path: str = INPUT_PATH,
 ) -> Dict[str, Any]:
     """
@@ -89,13 +81,12 @@ def create_detection_output_json(
 
     The detection model only needs to provide:
     - confidence
-    - start
-    - end
+    - point
     """
 
     detection_output = build_detection_output(
         confidence=confidence,
-        start=start,
+        point=point,
         end=end,
     )
 
@@ -118,20 +109,18 @@ def create_detection_output_json_from_model_output(
     {
         "confidence": 0.88,
         "callSegment": {
-            "start": 8.2,
-            "end": 12.6
+            "point": 8.2
         }
     }
     """
 
     confidence = model_output["confidence"]
-    start = model_output["callSegment"]["start"]
+    point = model_output["callSegment"]["point"]
     end = model_output["callSegment"]["end"]
 
     return create_detection_output_json(
         confidence=confidence,
-        start=start,
-        end=end,
+        point=point,
         output_path=output_path,
     )
 
@@ -140,8 +129,7 @@ if __name__ == "__main__":
     # Example execution
     output = create_detection_output_json(
         confidence=0.88,
-        start=8.2,
-        end=12.6,
+        point=8.2,
     )
 
     print(json.dumps(output, ensure_ascii=False, indent=2))

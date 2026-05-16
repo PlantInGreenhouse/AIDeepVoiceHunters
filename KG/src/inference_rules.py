@@ -22,8 +22,7 @@ def infer_risk_level(confidence: float) -> str:
 
 def build_observed_issues(
     confidence: float,
-    segment_start: float,
-    segment_end: float
+    segment_point: float,
 ) -> List[Dict]:
     """
     Build observed issues using only model confidence and detected segment period.
@@ -44,8 +43,7 @@ def build_observed_issues(
             "score": confidence,
             "severity": "high",
             "description": (
-                f"{segment_start}초부터 {segment_end}초 구간에서 "
-                f"딥보이스 조작 가능성이 높은 신호가 탐지되었습니다."
+                f"{segment_point}부근에서 딥보이스 조작 가능성이 높은 신호가 탐지되었습니다."
             )
         })
 
@@ -56,8 +54,7 @@ def build_observed_issues(
             "score": confidence,
             "severity": "medium",
             "description": (
-                f"{segment_start}초부터 {segment_end}초 구간에서 "
-                f"딥보이스 의심 신호가 탐지되었습니다."
+                f"{segment_point}부근에서 딥보이스 의심 신호가 탐지되었습니다."
             )
         })
 
@@ -68,8 +65,7 @@ def build_observed_issues(
             "score": confidence,
             "severity": "low",
             "description": (
-                f"{segment_start}초부터 {segment_end}초 구간에서 탐지는 수행되었지만, "
-                f"딥보이스로 판단할 만큼의 신뢰도는 낮습니다."
+                "딥보이스로 판단할 만큼의 신뢰도는 낮습니다."
             )
         })
 

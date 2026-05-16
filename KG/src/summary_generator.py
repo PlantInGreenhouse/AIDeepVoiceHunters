@@ -114,8 +114,7 @@ def extract_summary_context_from_graph(graph_dict: Dict[str, Any]) -> Dict[str, 
         "confidence": assessment_props["confidence"],
         "spoofType": spoof_type_props["label"],
         "segment": {
-            "start": segment_props["start"],
-            "end": segment_props["end"],
+            "point": segment_props["point"],
             "unit": segment_props.get("unit", "seconds"),
         },
         "observedIssues": observed_issues,
@@ -132,8 +131,7 @@ def build_summary_prompt_from_graph(graph_dict: Dict[str, Any]) -> str:
     spoof_type = context["spoofType"]
 
     segment = context["segment"]
-    start = segment["start"]
-    end = segment["end"]
+    point = segment["point"]
     unit = segment.get("unit", "seconds")
 
     observed_issues = context["observedIssues"]
@@ -172,13 +170,16 @@ def build_summary_prompt_from_graph(graph_dict: Dict[str, Any]) -> str:
 - 탐지 유형: {spoof_type}
 - 위험도: {level}
 - 탐지 확신도: {confidence}
-- 탐지 구간: {start}{unit} ~ {end}{unit}
+- 탐지 구간: {point}{unit}
 
 관측 근거:
 {issue_lines}
 
 권장 행동 후보:
 {action_lines}
+
+예시:
+딥보이스 탐지 가능성이 높은 구간은 {point}초 부근에서 의심 신호가 탐지되었습니다. 위험도가 높으므로, 저장된 번호로 직접 확인하거나 송금 및 인증번호 전달을 중단하는 것이 권장됩니다.
 
 출력:
 """.strip()
@@ -213,14 +214,13 @@ def fallback_summary_from_graph(graph_dict: Dict[str, Any]) -> str:
     context = extract_summary_context_from_graph(graph_dict)
 
     confidence = context["confidence"]
-    start = context["segment"]["start"]
-    end = context["segment"]["end"]
+    point = context["segment"]["point"]
 
     if confidence >= 0.7:
-        return f"{start}초부터 {end}초 구간에서 딥보이스 의심 신호가 높은 신뢰도로 탐지되었습니다."
+        return f"{point}초 부근에서 딥보이스 의심 신호가 높은 신뢰도로 탐지되었습니다."
     elif confidence >= 0.5:
-        return f"{start}초부터 {end}초 구간에서 딥보이스 의심 가능성이 탐지되었습니다."
-    return f"{start}초부터 {end}초 구간에서 탐지는 수행되었지만 딥보이스 가능성은 낮게 판단되었습니다."
+        return f"{point}초 부근에서 딥보이스 의심 가능성이 탐지되었습니다."
+    return f"{point}초 부근에서 탐지는 수행되었지만 딥보이스 가능성은 낮게 판단되었습니다."
 
 
 def generate_summary_from_graph(graph_dict: Dict[str, Any]) -> str:
