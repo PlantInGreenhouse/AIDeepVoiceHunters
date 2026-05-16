@@ -23,6 +23,7 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio';
 import Svg, { Circle, Path } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import {
   Phone,
   PhoneOff,
@@ -52,6 +53,13 @@ const RECORD_SECONDS = 5;
 // 데모 음성 파일 (나중에 진짜 파일 넣을 자리)
 // const DEMO_CALL_AUDIO = require('./assets/demo_call.mp3');
 const DEMO_CALL_AUDIO = null;  // 임시: 파일 추가 전까지 null
+
+// 경고 음성 파일 (나중에 본인이 만든 파일 넣을 자리)
+const WARNING_VOICE = require('./assets/warning_voice.mp3');
+const DANGER_VOICE = require('./assets/danger_voice.mp3');
+
+// 위험 상태 알림 반복 주기 (밀리초)
+const DANGER_REPEAT_INTERVAL = 5000;  // 위험 단계에서 5초마다 진동+음성 반복
 
 // 위험도 임계값
 const DANGER_THRESHOLD = 70;     // 이 이상이면 위험 경고
@@ -908,8 +916,12 @@ function CallScreen({ target, onEnd }) {
   const [riskScore, setRiskScore] = useState(0);
   const [riskHistory, setRiskHistory] = useState([]);
   const [warningShown, setWarningShown] = useState(false);
+  const [warningTriggered, setWarningTriggered] = useState(false); 
+  const [dangerTriggered, setDangerTriggered] = useState(false); 
 
   const player = DEMO_CALL_AUDIO ? useAudioPlayer(DEMO_CALL_AUDIO) : null;
+  const warningPlayer = WARNING_VOICE ? useAudioPlayer(WARNING_VOICE) : null;  
+  const dangerPlayer = DANGER_VOICE ? useAudioPlayer(DANGER_VOICE) : null;    
 
   // 통화 시간 카운트업
   useEffect(() => {
@@ -940,6 +952,69 @@ function CallScreen({ target, onEnd }) {
     }
   }, [riskScore, warningShown]);
 
+  // 주의 단계 진입 시 1회 알림 (진동 + 음성)
+  useEffect(() => {
+    if (
+      phase === 'active' &&
+      riskScore >= WARNING_THRESHOLD &&
+      riskScore < DANGER_THRESHOLD &&
+      !warningTriggered
+    ) {
+      setWarningTriggered(true);
+      // 진동: 알림 스타일 (짧고 또렷)
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      // 음성 안내
+      if (warningPlayer) {
+        try {
+          warningPlayer.seekTo(0);
+          warningPlayer.play();
+        } catch (e) {
+          console.warn('주의 음성 재생 실패', e);
+        }
+      }
+    }
+  }, [phase, riskScore, warningTriggered]);
+
+  // 위험 단계 진입 시 1회 알림 (강한 진동 + 음성)
+  useEffect(() => {
+    if (phase === 'active' && riskScore >= DANGER_THRESHOLD && !dangerTriggered) {
+      setDangerTriggered(true);
+      // 진동: 더 강한 패턴
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      // 음성 안내
+      if (dangerPlayer) {
+        try {
+          dangerPlayer.seekTo(0);
+          dangerPlayer.play();
+        } catch (e) {
+          console.warn('위험 음성 재생 실패', e);
+        }
+      }
+    }
+  }, [phase, riskScore, dangerTriggered]);
+
+  // 위험 상태 지속 시 5초마다 반복 알림
+  useEffect(() => {
+    if (phase !== 'active') return;
+    if (riskScore < DANGER_THRESHOLD) return;
+
+    const interval = setInterval(() => {
+      // 진동 반복
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+      // 음성 반복
+      if (dangerPlayer) {
+        try {
+          dangerPlayer.seekTo(0);
+          dangerPlayer.play();
+        } catch (e) {
+          console.warn('위험 음성 반복 실패', e);
+        }
+      }
+    }, DANGER_REPEAT_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [phase, riskScore >= DANGER_THRESHOLD]);
+
   const handleAccept = async () => {
     setPhase('active');
     if (player) {
@@ -953,11 +1028,15 @@ function CallScreen({ target, onEnd }) {
 
   const handleReject = () => {
     if (player) player.pause();
+    if (warningPlayer) warningPlayer.pause();
+    if (dangerPlayer) dangerPlayer.pause();
     onEnd({ rejected: true, target });
   };
 
   const handleEnd = () => {
     if (player) player.pause();
+    if (warningPlayer) warningPlayer.pause();
+    if (dangerPlayer) dangerPlayer.pause();
     onEnd({
       rejected: false,
       target,
