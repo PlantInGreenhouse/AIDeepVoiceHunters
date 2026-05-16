@@ -119,26 +119,16 @@ function sanitizePhoneNumber(phone) {
   return String(phone || '').replace(/[^0-9+]/g, '');
 }
 
-function getGuardianMember(familyList, target) {
+function getGuardianMember(familyList) {
   const guardianWithPhone = familyList.find(
-    (member) => member.isGuardian && member.phone && member.id !== target?.id
+    (member) => member.isGuardian && member.phone
   );
 
   if (guardianWithPhone) return guardianWithPhone;
 
-  const guardian = familyList.find(
-    (member) => member.isGuardian && member.id !== target?.id
-  );
+  const guardian = familyList.find((member) => member.isGuardian);
 
-  if (guardian) return guardian;
-
-  const memberWithPhone = familyList.find(
-    (member) => member.phone && member.id !== target?.id
-  );
-
-  if (memberWithPhone) return memberWithPhone;
-
-  return null;
+  return guardian || null;
 }
 
 function buildFallbackReport(callResult) {
@@ -1170,7 +1160,7 @@ function ResultReportScreen({
   onHome,
 }) {
   const target = callResult?.target;
-  const guardian = getGuardianMember(familyList, target);
+  const guardian = getGuardianMember(familyList);
   const callbackPhone = target?.phone || '';
   const [report, setReport] = useState(savedRecord?.report || null);
   const [isLoading, setIsLoading] = useState(!savedRecord?.report);
@@ -1231,7 +1221,7 @@ function ResultReportScreen({
     if (!guardian?.phone) {
       Alert.alert(
         '보호자 번호 없음',
-        '통화 대상과 다른 보호자 전화번호가 등록되어 있지 않습니다.'
+        '보호자로 지정된 사람의 전화번호가 등록되어 있지 않습니다.'
       );
       return;
     }
