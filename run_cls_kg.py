@@ -36,7 +36,7 @@ def run_detection(audio_path, ref_audio_path):
     model_config = config["model_config"]
     ######settings
     device = "cuda"
-    ckpt_dir = "CLSModel/aasist/results/train_aasist_pass/ckpt_1.pth"
+    ckpt_dir = "CLSModel/aasist/results/train_aasist_pass/ckpt_10.pth"
     # audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/003/104/104_003_0019.flac"
     # ref_audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/gen/104/104_003_0019_fake.flac"
     cut = 64600
@@ -88,7 +88,9 @@ def run_detection(audio_path, ref_audio_path):
         x_inp = x_inp.unsqueeze(0).to(device) #batch dim
         ref_inp = ref_inp.unsqueeze(0).to(device) #batch dim
         _, batch_out, t_attn_score = model(x_inp, ref_inp, time_attention = True) #B x 2
-        prob = torch.softmax(batch_out, dim=1)[0][1]
+        temperature = 2.0  
+
+        prob = torch.softmax(batch_out / temperature, dim=1)[0][1]
 
         
         anomalous_idx = torch.argmax(t_attn_score.squeeze(1), dim=-1)

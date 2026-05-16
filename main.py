@@ -31,14 +31,25 @@ async def analyze(
     user_voice: UploadFile = File(...),
     comparison_voice: UploadFile = File(...)
 ):
-    ref_voice = comparison_voice
+    #Temp change
+    ref_voice = user_voice
+    user_voice = comparison_voice
     
+    # ref_voice = comparison_voice
     try:
         temp_dir = "./temp"
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)  # 폴더 강제 삭제
         os.makedirs(temp_dir, exist_ok=True)
+
+        import uuid
+        req_id = str(uuid.uuid4())
             
-        user_path = "./temp/user_voice.m4a"
-        ref_path = "./temp/ref_voice.m4a"
+        user_path = temp_dir + f"/user_{req_id}.m4a"
+        ref_path = temp_dir + f"/ref_{req_id}.m4a"
+
+        user_voice.file.seek(0)
+        ref_voice.file.seek(0)
 
         save_upload_file(user_voice, user_path)
         save_upload_file(ref_voice, ref_path)
