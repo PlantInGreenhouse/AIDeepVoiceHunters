@@ -48,7 +48,7 @@ def main(args: argparse.Namespace) -> None:
     ##Load pretrained weights
     model.add_new_modules() 
 
-    checkpoint = torch.load("./results/e=100_b=24_lr=0.0001/ckpt_2.pth", map_location='cpu')
+    checkpoint = torch.load("./results/train_aasist_pass/ckpt_2.pth", map_location='cpu')
     model.load_state_dict(checkpoint["model_state_dict"])
 
     model.to(device) 

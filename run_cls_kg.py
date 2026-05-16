@@ -36,7 +36,7 @@ def run_detection():
     model_config = config["model_config"]
     ######settings
     device = "cuda"
-    ckpt_dir = "CLSModel/aasist/results/e=100_b=24_lr=0.0001/ckpt_1.pth"
+    ckpt_dir = "CLSModel/aasist/results/train_aasist_pass/ckpt_1.pth"
     audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/003/104/104_003_0019.flac"
     ref_audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/gen/104/104_003_0019_fake.flac"
     cut = 64600
