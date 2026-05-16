@@ -1487,7 +1487,7 @@ function CallScreen({ target, onEnd }) {
     }
   }, [riskScore, warningShown]);
 
-  // 주의 단계 진입 시 1회 알림 (진동 + 음성)
+  // 주의 단계 진입 시 1회 알림 (진동만)
   useEffect(() => {
     if (
       phase === 'active' &&
@@ -1498,15 +1498,6 @@ function CallScreen({ target, onEnd }) {
       setWarningTriggered(true);
       // 진동: 짧고 또렷한 더블 패턴 [대기, 진동, 대기, 진동]
       Vibration.vibrate([0, 400, 200, 400]);
-      // 음성 안내 (1회)
-      if (warningPlayer) {
-        try {
-          warningPlayer.seekTo(0);
-          warningPlayer.play();
-        } catch (e) {
-          console.warn('주의 음성 재생 실패', e);
-        }
-      }
     }
   }, [phase, riskScore, warningTriggered]);
 
