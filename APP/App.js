@@ -334,7 +334,15 @@ function HomeScreen({ familyList, onAddFamily, onStartAnalysis, onDeleteFamily }
             <View style={styles.memberInfo}>
               <Text style={styles.memberAvatar}>👤</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.memberName}>{member.name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Text style={styles.memberName}>{member.name}</Text>
+                  {member.isGuardian && (
+                    <View style={styles.guardianBadge}>
+                      <Shield size={11} color="#FFFFFF" />
+                      <Text style={styles.guardianBadgeText}>  보호자</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={styles.memberRelation}>
                   {member.relation}
                   {member.phone ? ` · ${member.phone}` : ''}
@@ -376,6 +384,7 @@ function RegisterScreen({ onBack, onComplete }) {
   const [name, setName] = useState('');
   const [relation, setRelation] = useState('');
   const [phone, setPhone] = useState('');
+  const [isGuardian, setIsGuardian] = useState(false);   // ← 추가
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [recordedUri, setRecordedUri] = useState(null);
   const [countdown, setCountdown] = useState(RECORD_SECONDS);
@@ -441,6 +450,7 @@ function RegisterScreen({ onBack, onComplete }) {
       name: name.trim(),
       relation: relation.trim(),
       phone: phone.trim(),
+      isGuardian,                                  
       audioUri: recordedUri,
       registeredAt: new Date().toISOString(),
     });
@@ -474,6 +484,23 @@ function RegisterScreen({ onBack, onComplete }) {
           placeholderTextColor="#9CA3AF"
         />
       </View>
+
+      {/* 보호자 체크박스 */}
+      <TouchableOpacity 
+        style={styles.checkboxRow}
+        onPress={() => setIsGuardian(!isGuardian)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.checkbox, isGuardian && styles.checkboxActive]}>
+          {isGuardian && <Text style={styles.checkboxCheck}>✓</Text>}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.checkboxLabel}>보호자로 지정</Text>
+          <Text style={styles.checkboxDesc}>
+            보이스피싱 의심 시 이 분에게 알림 문자가 발송됩니다
+          </Text>
+        </View>
+      </TouchableOpacity>
 
       <View style={styles.inputBlock}>
         <Text style={styles.inputLabel}>전화번호 (선택)</Text>
@@ -1357,5 +1384,59 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
+  },
+
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    marginTop: 4,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  checkboxActive: {
+    backgroundColor: '#243B80',
+    borderColor: '#243B80',
+  },
+  checkboxCheck: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  checkboxDesc: {
+    fontSize: 11,
+    color: '#6B7280',
+  },
+  guardianBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#243B80',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  guardianBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
 });
