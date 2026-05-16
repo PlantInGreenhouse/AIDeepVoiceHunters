@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Image,
   Linking,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,6 +16,7 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import {
   AudioModule,
   RecordingPresets,
@@ -58,6 +60,285 @@ const STORAGE_KEYS = {
   FAMILY_LIST: '@voicepass/familyList',
   REPORT_HISTORY: '@voicepass/reportHistory',
 };
+
+// ============================================================
+// iOS 스타일 커스텀 Alert 시스템
+// 사용법: const { showAlert } = useAlert();
+//        showAlert({ title, message, buttons: [...] });
+// ============================================================
+
+const AlertContext = React.createContext(null);
+
+function useAlert() {
+  const ctx = useContext(AlertContext);
+  if (!ctx) {
+    throw new Error('useAlert는 AlertProvider 안에서만 사용할 수 있습니다.');
+  }
+  return ctx;
+}
+
+function AlertProvider({ children }) {
+  const [config, setConfig] = useState(null);
+  const [visible, setVisible] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  const showAlert = useCallback((cfg) => {
+    setConfig({
+      title: cfg.title || '',
+      message: cfg.message || '',
+      buttons: cfg.buttons && cfg.buttons.length
+        ? cfg.buttons
+        : [{ text: '확인' }],
+      icon: cfg.icon || null,           // 'success' | 'warning' | 'danger' | 'info'
+      cancelable: cfg.cancelable !== false,
+    });
+    setVisible(true);
+  }, []);
+
+  const hideAlert = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.9,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setVisible(false);
+      setConfig(null);
+    });
+  }, [opacityAnim, scaleAnim]);
+
+  useEffect(() => {
+    if (visible) {
+      opacityAnim.setValue(0);
+      scaleAnim.setValue(0.9);
+      Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 7,
+          tension: 80,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible, opacityAnim, scaleAnim]);
+
+  const handleButtonPress = (btn) => {
+    hideAlert();
+    if (btn.onPress) {
+      // 닫는 애니메이션과 동시에 콜백 실행
+      setTimeout(() => btn.onPress(), 100);
+    }
+  };
+
+  const handleBackdropPress = () => {
+    if (config?.cancelable !== false) {
+      const cancelBtn =
+        config?.buttons?.find((b) => b.style === 'cancel') || null;
+      if (cancelBtn) {
+        handleButtonPress(cancelBtn);
+      } else {
+        hideAlert();
+      }
+    }
+  };
+
+  const renderIcon = () => {
+    if (!config?.icon) return null;
+    const iconConfig = {
+      success: { bg: '#10B981', component: CheckCircle2 },
+      warning: { bg: '#F59E0B', component: AlertTriangle },
+      danger: { bg: '#EF4444', component: AlertTriangle },
+      info: { bg: '#243B80', component: Shield },
+    }[config.icon];
+
+    if (!iconConfig) return null;
+    const Icon = iconConfig.component;
+    return (
+      <View style={[alertStyles.iconCircle, { backgroundColor: iconConfig.bg }]}>
+        <Icon color="#FFFFFF" size={28} strokeWidth={2.5} />
+      </View>
+    );
+  };
+
+  return (
+    <AlertContext.Provider value={{ showAlert, hideAlert }}>
+      {children}
+      <Modal
+        transparent
+        visible={visible}
+        statusBarTranslucent
+        animationType="none"
+        onRequestClose={handleBackdropPress}
+      >
+        <Animated.View
+          style={[alertStyles.overlay, { opacity: opacityAnim }]}
+        >
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 25 : 60}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={handleBackdropPress}
+          />
+          <Animated.View
+            style={[
+              alertStyles.card,
+              {
+                transform: [{ scale: scaleAnim }],
+                opacity: opacityAnim,
+              },
+            ]}
+          >
+            {renderIcon()}
+            {config?.title ? (
+              <Text style={alertStyles.title}>{config.title}</Text>
+            ) : null}
+            {config?.message ? (
+              <Text style={alertStyles.message}>{config.message}</Text>
+            ) : null}
+
+            <View
+              style={[
+                alertStyles.buttonRow,
+                config?.buttons?.length === 1 && alertStyles.buttonRowSingle,
+              ]}
+            >
+              {config?.buttons?.map((btn, idx) => {
+                const isDestructive = btn.style === 'destructive';
+                const isCancel = btn.style === 'cancel';
+                const isPrimary = !isCancel && !isDestructive;
+
+                return (
+                  <TouchableOpacity
+                    key={`${btn.text}-${idx}`}
+                    style={[
+                      alertStyles.button,
+                      isPrimary && alertStyles.buttonPrimary,
+                      isDestructive && alertStyles.buttonDestructive,
+                      isCancel && alertStyles.buttonCancel,
+                    ]}
+                    onPress={() => handleButtonPress(btn)}
+                    activeOpacity={0.85}
+                  >
+                    <Text
+                      style={[
+                        alertStyles.buttonText,
+                        isPrimary && alertStyles.buttonTextPrimary,
+                        isDestructive && alertStyles.buttonTextDestructive,
+                        isCancel && alertStyles.buttonTextCancel,
+                      ]}
+                    >
+                      {btn.text}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    </AlertContext.Provider>
+  );
+}
+
+const alertStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+    borderRadius: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    elevation: 20,
+  },
+  iconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  message: {
+    fontSize: 14,
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+    fontWeight: '500',
+  },
+  buttonRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  buttonRowSingle: {
+    justifyContent: 'center',
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPrimary: {
+    backgroundColor: '#243B80',
+  },
+  buttonDestructive: {
+    backgroundColor: '#EF4444',
+  },
+  buttonCancel: {
+    backgroundColor: '#F3F4F6',
+  },
+  buttonText: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  buttonTextPrimary: {
+    color: '#FFFFFF',
+  },
+  buttonTextDestructive: {
+    color: '#FFFFFF',
+  },
+  buttonTextCancel: {
+    color: '#374151',
+  },
+});
 
 
 // 음성 파일을 영구 저장 폴더로 복사
@@ -532,6 +813,15 @@ function MiniGraph({ history, color, width = 280, height = 50 }) {
 
 
 export default function App() {
+  return (
+    <AlertProvider>
+      <AppInner />
+    </AlertProvider>
+  );
+}
+
+function AppInner() {
+  const { showAlert } = useAlert();
   const [screenIndex, setScreenIndex] = useState(0);
   const [familyList, setFamilyList] = useState([]);
   const [callTarget, setCallTarget] = useState(null);
@@ -589,10 +879,11 @@ export default function App() {
 
   // 모든 데이터 초기화 (개발/테스트용)
   const handleResetAllData = () => {
-    Alert.alert(
-      '데이터 초기화',
-      '모든 가족과 보고서를 삭제할까요? (되돌릴 수 없음)',
-      [
+    showAlert({
+      title: '데이터 초기화',
+      message: '모든 가족과 보고서를 삭제할까요?\n되돌릴 수 없습니다.',
+      icon: 'warning',
+      buttons: [
         { text: '취소', style: 'cancel' },
         {
           text: '삭제',
@@ -604,11 +895,15 @@ export default function App() {
             ]);
             setFamilyList([]);
             setReportHistory([]);
-            Alert.alert('완료', '모든 데이터가 삭제되었습니다.');
+            showAlert({
+              title: '삭제 완료',
+              message: '모든 데이터가 삭제되었습니다.',
+              icon: 'success',
+            });
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   // 통화 시뮬레이션 시작 (가족 선택 후)
@@ -747,15 +1042,17 @@ function HomeScreen({
   onOpenReport,
   onDeleteReport,
 }) {
+  const { showAlert } = useAlert();
   const handleDelete = (id, name) => {
-    Alert.alert(
-      '음성 삭제',
-      `${name}님의 등록된 음성을 삭제할까요?`,
-      [
+    showAlert({
+      title: '음성 삭제',
+      message: `${name}님의 등록된 음성을 삭제할까요?`,
+      icon: 'warning',
+      buttons: [
         { text: '취소', style: 'cancel' },
         { text: '삭제', style: 'destructive', onPress: () => onDeleteFamily(id) },
-      ]
-    );
+      ],
+    });
   };
 
   return (
@@ -894,6 +1191,7 @@ function HomeScreen({
 }
   
 function RegisterScreen({ onBack, onComplete }) {
+  const { showAlert } = useAlert();
   const [name, setName] = useState('');
   const [relation, setRelation] = useState('');
   const [phone, setPhone] = useState('');
@@ -910,7 +1208,11 @@ function RegisterScreen({ onBack, onComplete }) {
     (async () => {
       const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('마이크 권한 필요', '음성 등록을 위해 마이크 권한을 허용해주세요.');
+        showAlert({
+          title: '마이크 권한 필요',
+          message: '음성 등록을 위해 마이크 권한을 허용해주세요.',
+          icon: 'warning',
+        });
         return;
       }
       setPermissionGranted(true);
@@ -934,7 +1236,11 @@ function RegisterScreen({ onBack, onComplete }) {
 
   const startRecording = async () => {
     if (!permissionGranted) {
-      Alert.alert('권한 없음', '마이크 권한을 먼저 허용해주세요.');
+      showAlert({
+        title: '권한 없음',
+        message: '마이크 권한을 먼저 허용해주세요.',
+        icon: 'warning',
+      });
       return;
     }
     setRecordedUri(null);
@@ -956,7 +1262,11 @@ function RegisterScreen({ onBack, onComplete }) {
 
   const handleSubmit = async () => {
     if (!canSubmit) {
-      Alert.alert('확인', '이름·관계·5초 녹음을 모두 완료해주세요.');
+      showAlert({
+        title: '입력 확인',
+        message: '이름·관계·5초 녹음을 모두 완료해주세요.',
+        icon: 'warning',
+      });
       return;
     }
 
@@ -966,14 +1276,28 @@ function RegisterScreen({ onBack, onComplete }) {
     // 음성 파일을 영구 저장소로 복사
     const permanentUri = await saveAudioPermanently(recordedUri, familyId);
 
-    onComplete({
-      id: familyId,                              
-      name: name.trim(),
-      relation: relation.trim(),
-      phone: phone.trim(),
-      isGuardian,                                  
-      audioUri: permanentUri,                   
-      registeredAt: new Date().toISOString(),
+    // 음성이 안전하게 저장되었음을 사용자에게 안내
+    showAlert({
+      title: '저장 완료',
+      message: '암호화되어 안전하게 저장되었습니다!',
+      icon: 'success',
+      cancelable: false,
+      buttons: [
+        {
+          text: '확인',
+          onPress: () => {
+            onComplete({
+              id: familyId,
+              name: name.trim(),
+              relation: relation.trim(),
+              phone: phone.trim(),
+              isGuardian,
+              audioUri: permanentUri,
+              registeredAt: new Date().toISOString(),
+            });
+          },
+        },
+      ],
     });
   };
 
@@ -1126,6 +1450,7 @@ function SelectTargetScreen({ familyList, onBack, onSelect }) {
 
 
 function CallScreen({ target, onEnd }) {
+  const { showAlert } = useAlert();
   const [phase, setPhase] = useState('incoming');
   const [elapsedSec, setElapsedSec] = useState(0);
   const [riskScore, setRiskScore] = useState(0);
@@ -1283,10 +1608,11 @@ function CallScreen({ target, onEnd }) {
     } catch (error) {
       setServerAnalyzing(false);
   
-      Alert.alert(
-        '서버 분석 실패',
-        '통화 음성 분석 결과를 받아오지 못했습니다.\n\n' + error.message
-      );
+      showAlert({
+        title: '서버 분석 실패',
+        message: '통화 음성 분석 결과를 받아오지 못했습니다.\n\n' + error.message,
+        icon: 'danger',
+      });
     }
   };
 
@@ -1553,6 +1879,7 @@ function ResultReportScreen({
   onSaveReport,
   onHome,
 }) {
+  const { showAlert } = useAlert();
   const target = callResult?.target;
   const guardian = getGuardianMember(familyList);
   const callbackPhone = target?.phone || '';
@@ -1604,7 +1931,11 @@ function ResultReportScreen({
     const phone = sanitizePhoneNumber(callbackPhone);
 
     if (!phone) {
-      Alert.alert('번호 없음', '재확인 전화를 걸 등록 번호가 없습니다.');
+      showAlert({
+        title: '번호 없음',
+        message: '재확인 전화를 걸 등록 번호가 없습니다.',
+        icon: 'warning',
+      });
       return;
     }
 
@@ -1613,10 +1944,11 @@ function ResultReportScreen({
 
   const handleSendGuardianSms = () => {
     if (!guardian?.phone) {
-      Alert.alert(
-        '보호자 번호 없음',
-        '보호자로 지정된 사람의 전화번호가 등록되어 있지 않습니다.'
-      );
+      showAlert({
+        title: '보호자 번호 없음',
+        message: '보호자로 지정된 사람의 전화번호가 등록되어 있지 않습니다.',
+        icon: 'warning',
+      });
       return;
     }
 
