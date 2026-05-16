@@ -84,6 +84,11 @@ def build_actions(risk_level: str) -> List[Dict]:
                 "title": "송금 및 인증번호 전달 중단하기",
                 "detail": "상대방이 금전, 계좌, 인증번호, 개인정보를 요구했다면 즉시 중단하세요.",
                 "priority": "high"
+            },
+            {
+                "title": "경찰 및 금융기관 신고하기",
+                "detail": "딥보이스 사기 피해가 의심됩니다. 가까운 경찰서나 금융기관에 신고하여 추가 피해를 방지하세요.",
+                "priority": "high"
             }
         ]
 
@@ -93,6 +98,16 @@ def build_actions(risk_level: str) -> List[Dict]:
                 "title": "추가 확인하기",
                 "detail": "상대방의 신원을 다른 연락 수단으로 확인하세요.",
                 "priority": "medium"
+            },
+            {
+                "title": "개인정보 제공 주의",
+                "detail": "금전, 계좌, 인증번호, 개인정보를 요구하는 경우 즉시 중단하고 상대방의 신원을 확인하세요.",
+                "priority": "medium"
+            },
+            {
+                "title": "통화내용 신뢰하지 않기",
+                "detail": "현재 탐지된 구간에서 딥보이스 의심 신호가 탐지되었습니다. 통화 내용에 대한 신뢰도를 낮추고, 중요한 정보 제공을 자제하세요.",
+                "priority": "medium"
             }
         ]
 
@@ -101,5 +116,10 @@ def build_actions(risk_level: str) -> List[Dict]:
             "title": "통화 계속 가능",
             "detail": "현재 탐지 결과만으로는 조작 음성 가능성이 낮습니다.",
             "priority": "low"
+        },
+        {
+                "title": "추가 조치 필요 없음",
+                "detail": "탐지된 구간에서 딥보이스 의심 신호가 낮게 탐지되었습니다. 현재로서는 추가 조치가 필요하지 않습니다.",
+                "priority": "low"
         }
     ]
