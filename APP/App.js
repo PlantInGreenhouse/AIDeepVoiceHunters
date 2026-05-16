@@ -4,6 +4,7 @@ import {
   Alert,
   SafeAreaView,
   Animated,
+  Linking,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -40,11 +41,9 @@ import {
 const FLOW_STEPS = [
   { title: '홈', detail: '등록된 가족 목소리 관리' },
   { title: '가족 추가', detail: '새 가족 목소리 등록' },
-  { title: '통화 분석', detail: '현재 통화 음성 분석 중' },
-  { title: '결과', detail: '일치 / 주의 / 위험' },
-  { title: '판단 근거', detail: '모델이 본 이상 신호' },
-  { title: '즉시 대응', detail: '재확인·문자·가족 공유' },
-  { title: '지식그래프', detail: '결과 설명 구조' },
+  { title: '통화 분석', detail: '분석할 가족 선택' },
+  { title: '통화 화면', detail: '현재 통화 음성 분석 중' },
+  { title: '결과 보고서', detail: '판단 근거와 대응 액션' },
 ];
 
 const RECORD_SECONDS = 5;
@@ -61,7 +60,7 @@ const WARNING_THRESHOLD = 40;    // 이 이상이면 주의
 // 분석 청크 주기 (밀리초)
 const ANALYSIS_INTERVAL = 1500;  // 1.5초마다 위험도 갱신
 
-
+const MODEL_REPORT_API_URL = '';
 
 // API 호출 (FastAPI로 연결 예정)
 
@@ -89,7 +88,204 @@ async function analyzeAudioChunk(elapsedSeconds, target) {
   };
 }
 
+function getLevelFromRisk(riskScore) {
+  if (riskScore >= DANGER_THRESHOLD) {
+    return {
+      level: 'danger',
+      label: '위험',
+      color: '#EF4444',
+      backgroundColor: '#FEF2F2',
+    };
+  }
 
+  if (riskScore >= WARNING_THRESHOLD) {
+    return {
+      level: 'warning',
+      label: '주의',
+      color: '#F59E0B',
+      backgroundColor: '#FFFBEB',
+    };
+  }
+
+  return {
+    level: 'safe',
+    label: '일치',
+    color: '#10B981',
+    backgroundColor: '#ECFDF5',
+  };
+}
+
+function sanitizePhoneNumber(phone) {
+  return String(phone || '').replace(/[^0-9+]/g, '');
+}
+
+function getGuardianMember(familyList, target) {
+  const guardianWithPhone = familyList.find(
+    (member) => member.isGuardian && member.phone && member.id !== target?.id
+  );
+
+  if (guardianWithPhone) return guardianWithPhone;
+
+  const guardian = familyList.find(
+    (member) => member.isGuardian && member.id !== target?.id
+  );
+
+  if (guardian) return guardian;
+
+  const memberWithPhone = familyList.find(
+    (member) => member.phone && member.id !== target?.id
+  );
+
+  if (memberWithPhone) return memberWithPhone;
+
+  return null;
+}
+
+function buildFallbackReport(callResult) {
+  const riskScore = Math.round(callResult?.finalRisk || 0);
+  const levelInfo = getLevelFromRisk(riskScore);
+
+  const similarity = Math.max(5, 100 - riskScore);
+  const confidence = Math.min(95, Math.max(60, riskScore + 12));
+  const spoofProbability = riskScore;
+
+  return {
+    level: levelInfo.level,
+    label: levelInfo.label,
+    color: levelInfo.color,
+    backgroundColor: levelInfo.backgroundColor,
+    riskScore,
+    similarity,
+    confidence,
+    spoofProbability,
+    summary:
+      riskScore >= DANGER_THRESHOLD
+        ? '등록된 가족 음성과 현재 통화 음성의 차이가 크게 관찰되어 딥보이스 의심 상태로 분류되었습니다.'
+        : riskScore >= WARNING_THRESHOLD
+        ? '등록된 음성과 일부 차이가 관찰되어 주의가 필요합니다.'
+        : '등록된 가족 음성과 현재 통화 음성이 대체로 일치합니다.',
+    reasons:
+      riskScore >= DANGER_THRESHOLD
+        ? [
+            '등록된 기준 음성과 현재 통화 음성의 화자 유사도가 낮게 측정되었습니다.',
+            '문장 끝 억양과 호흡 패턴이 평소 음성과 다르게 나타났습니다.',
+            '짧은 구간에서 합성음 또는 변조 음성으로 의심되는 패턴이 관찰되었습니다.',
+          ]
+        : riskScore >= WARNING_THRESHOLD
+        ? [
+            '일부 음성 구간에서 등록 음성과 차이가 관찰되었습니다.',
+            '통화 환경 또는 잡음에 의한 오차 가능성이 있어 추가 확인이 필요합니다.',
+          ]
+        : [
+            '등록된 기준 음성과 현재 통화 음성의 화자 특성이 대체로 일치합니다.',
+            '합성음으로 의심되는 뚜렷한 패턴이 발견되지 않았습니다.',
+          ],
+  };
+}
+
+function normalizeModelReport(apiResult, fallback) {
+  if (!apiResult) return fallback;
+
+  const riskScore = Math.round(
+    apiResult.riskScore ??
+      apiResult.risk_score ??
+      apiResult.risk ??
+      apiResult.spoofProbability ??
+      fallback.riskScore
+  );
+
+  const levelInfo = getLevelFromRisk(riskScore);
+
+  return {
+    ...fallback,
+    level: apiResult.level || levelInfo.level,
+    label: apiResult.label || levelInfo.label,
+    color: levelInfo.color,
+    backgroundColor: levelInfo.backgroundColor,
+    riskScore,
+    similarity: Math.round(apiResult.similarity ?? fallback.similarity),
+    confidence: Math.round(apiResult.confidence ?? fallback.confidence),
+    spoofProbability: Math.round(
+      apiResult.spoofProbability ??
+        apiResult.spoof_probability ??
+        fallback.spoofProbability
+    ),
+    summary: apiResult.summary || apiResult.explanation || fallback.summary,
+    reasons:
+      apiResult.reasons ||
+      apiResult.observedIssues ||
+      apiResult.observed_issues ||
+      apiResult.evidence ||
+      fallback.reasons,
+  };
+}
+
+async function requestModelReport({ callResult, target, guardian }) {
+  const fallback = buildFallbackReport(callResult);
+
+  if (!MODEL_REPORT_API_URL) {
+    return fallback;
+  }
+
+  try {
+    const response = await fetch(MODEL_REPORT_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        targetName: target?.name,
+        targetRelation: target?.relation,
+        registeredPhone: target?.phone,
+        callerPhone: target?.phone,
+        guardianName: guardian?.name,
+        guardianPhone: guardian?.phone,
+        duration: callResult?.duration,
+        finalRisk: callResult?.finalRisk,
+        riskHistory: callResult?.riskHistory || [],
+        registeredAudioUri: target?.audioUri,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Model API error: ${response.status}`);
+    }
+
+    const apiResult = await response.json();
+    return normalizeModelReport(apiResult, fallback);
+  } catch (error) {
+    console.warn('FastAPI report request failed. fallback report used.', error);
+    return fallback;
+  }
+}
+
+function buildGuardianSmsMessage({ target, report, callbackPhone }) {
+  return `[Voice Pass 경고]
+${target?.name || '가족'}님으로 표시된 통화에서 의심 신호가 감지되었습니다.
+
+재확인 번호: ${callbackPhone || '등록된 번호 없음'}
+판정 결과: ${report?.label || '확인 필요'}
+위험도: ${report?.riskScore ?? '-'}%
+
+저장된 가족 번호로 직접 재확인해주세요.`;
+}
+
+function formatReportTime(dateString) {
+  if (!dateString) return '시간 정보 없음';
+
+  const date = new Date(dateString);
+
+  if (Number.isNaN(date.getTime())) {
+    return '시간 정보 없음';
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+
+  return `${month}/${day} ${hour}:${minute}`;
+}
 
 // 원형 프로그레스 게이지 컴포넌트
 
@@ -208,6 +404,8 @@ export default function App() {
   const [familyList, setFamilyList] = useState([]);
   const [callTarget, setCallTarget] = useState(null);
   const [callResult, setCallResult] = useState(null);
+  const [reportHistory, setReportHistory] = useState([]);
+  const [selectedReportRecord, setSelectedReportRecord] = useState(null);
 
   const currentStep = FLOW_STEPS[screenIndex];
   const progress = `${screenIndex + 1} / ${FLOW_STEPS.length}`;
@@ -231,8 +429,38 @@ export default function App() {
 
   // 통화 종료 후 결과 처리
   const handleCallEnd = (result) => {
-    setCallResult(result);
-    setScreenIndex(4);  // 결과 화면 ##################(만들어야함)
+    const nextResult = {
+      ...result,
+      reportId: Date.now().toString(),
+      createdAt: new Date().toISOString(),
+    };
+  
+    setSelectedReportRecord(null);
+    setCallResult(nextResult);
+    setScreenIndex(4);
+  };
+  
+
+  const handleSaveReport = (record) => {
+    setReportHistory((prev) => {
+      const alreadyExists = prev.some((item) => item.id === record.id);
+  
+      if (alreadyExists) {
+        return prev.map((item) => (item.id === record.id ? record : item));
+      }
+  
+      return [record, ...prev];
+    });
+  };
+  
+  const handleOpenReport = (record) => {
+    setSelectedReportRecord(record);
+    setCallResult(record.callResult);
+    setScreenIndex(4);
+  };
+  
+  const handleDeleteReport = (id) => {
+    setReportHistory((prev) => prev.filter((item) => item.id !== id));
   };
 
   // 가족 삭제
@@ -267,9 +495,12 @@ export default function App() {
           {screenIndex === 0 && (
             <HomeScreen
               familyList={familyList}
+              reportHistory={reportHistory}
               onAddFamily={() => setScreenIndex(1)}
               onStartAnalysis={() => setScreenIndex(2)}
               onDeleteFamily={handleDeleteFamily}
+              onOpenReport={handleOpenReport}
+              onDeleteReport={handleDeleteReport}
             />
           )}
           {screenIndex === 1 && (
@@ -285,13 +516,35 @@ export default function App() {
               onSelect={handleStartCall}
             />
           )}
+          {screenIndex === 4 && callResult && (
+            <ResultReportScreen
+              callResult={callResult}
+              familyList={familyList}
+              savedRecord={selectedReportRecord}
+              onSaveReport={handleSaveReport}
+              onHome={() => {
+                setCallTarget(null);
+                setCallResult(null);
+                setSelectedReportRecord(null);
+                setScreenIndex(0);
+              }}
+            />
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
   );
 }
 
-function HomeScreen({ familyList, onAddFamily, onStartAnalysis, onDeleteFamily }) {
+function HomeScreen({
+  familyList,
+  reportHistory,
+  onAddFamily,
+  onStartAnalysis,
+  onDeleteFamily,
+  onOpenReport,
+  onDeleteReport,
+}) {
   const handleDelete = (id, name) => {
     Alert.alert(
       '음성 삭제',
@@ -376,10 +629,65 @@ function HomeScreen({ familyList, onAddFamily, onStartAnalysis, onDeleteFamily }
       >
         <Text style={styles.primaryButtonText}>실시간 분석 시작</Text>
       </TouchableOpacity>
+
+      <View style={styles.reportHistorySection}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>최근 분석 보고서</Text>
+          <Text style={styles.sectionBadge}>{reportHistory.length}건</Text>
+        </View>
+
+        {reportHistory.length === 0 ? (
+          <View style={styles.emptyReportCard}>
+            <Text style={styles.emptyTitle}>저장된 보고서가 없습니다</Text>
+            <Text style={styles.emptyDesc}>
+              통화 분석을 완료하면 결과 보고서가 여기에 저장됩니다.
+            </Text>
+          </View>
+        ) : (
+          reportHistory.map((record) => (
+            <View key={record.id} style={styles.reportHistoryCard}>
+              <TouchableOpacity
+                style={styles.reportHistoryMain}
+                onPress={() => onOpenReport(record)}
+              >
+                <View
+                  style={[
+                    styles.reportHistoryBadge,
+                    { backgroundColor: record.report?.color || '#243B80' },
+                  ]}
+                >
+                  <Text style={styles.reportHistoryBadgeText}>
+                    {record.report?.label || '보고서'}
+                  </Text>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reportHistoryTitle}>
+                    {record.target?.name || '알 수 없음'} · {record.target?.relation || '관계 없음'}
+                  </Text>
+                  <Text style={styles.reportHistoryDesc}>
+                    재확인 번호 {record.callbackPhone || '등록된 번호 없음'} · 위험도 {record.report?.riskScore ?? '-'}%
+                  </Text>
+                  <Text style={styles.reportHistoryDate}>
+                    {formatReportTime(record.createdAt)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.reportHistoryDelete}
+                onPress={() => onDeleteReport(record.id)}
+              >
+                <Text style={styles.reportHistoryDeleteText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </View>
     </View>
   );
 }
-
+  
 function RegisterScreen({ onBack, onComplete }) {
   const [name, setName] = useState('');
   const [relation, setRelation] = useState('');
@@ -594,11 +902,14 @@ function SelectTargetScreen({ familyList, onBack, onSelect }) {
           disabled={!selected}
         >
           <Text style={styles.primaryButtonText}>실시간 분석 시작</Text>
+
         </TouchableOpacity>
       </View>
+
     </View>
   );
 }
+
 
 
 function CallScreen({ target, onEnd }) {
@@ -690,7 +1001,7 @@ function CallScreen({ target, onEnd }) {
     return <CheckCircle2 size={18} color="#FFFFFF" />;
   };
 
-  // ===== 수신 화면 =====
+  // 수신 화면
   if (phase === 'incoming') {
     return (
       <View style={styles.galaxyIncomingScreen}>
@@ -847,6 +1158,232 @@ function CallScreen({ target, onEnd }) {
           <PhoneOff size={26} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+    </View>
+  );
+}
+
+function ResultReportScreen({
+  callResult,
+  familyList,
+  savedRecord,
+  onSaveReport,
+  onHome,
+}) {
+  const target = callResult?.target;
+  const guardian = getGuardianMember(familyList, target);
+  const callbackPhone = target?.phone || '';
+  const [report, setReport] = useState(savedRecord?.report || null);
+  const [isLoading, setIsLoading] = useState(!savedRecord?.report);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadReport() {
+      if (savedRecord?.report) {
+        setReport(savedRecord.report);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+
+      const nextReport = await requestModelReport({
+        callResult,
+        target,
+        guardian,
+      });
+
+      if (alive) {
+        setReport(nextReport);
+        setIsLoading(false);
+
+        onSaveReport?.({
+          id: callResult?.reportId || Date.now().toString(),
+          createdAt: callResult?.createdAt || new Date().toISOString(),
+          target,
+          guardian,
+          callbackPhone,
+          report: nextReport,
+          callResult,
+        });
+      }
+    }
+
+    loadReport();
+
+    return () => {
+      alive = false;
+    };
+  }, [callResult?.reportId, savedRecord?.id]);
+
+  const handleCallRegisteredNumber = () => {
+    const phone = sanitizePhoneNumber(callbackPhone);
+
+    if (!phone) {
+      Alert.alert('번호 없음', '재확인 전화를 걸 등록 번호가 없습니다.');
+      return;
+    }
+
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleSendGuardianSms = () => {
+    if (!guardian?.phone) {
+      Alert.alert(
+        '보호자 번호 없음',
+        '통화 대상과 다른 보호자 전화번호가 등록되어 있지 않습니다.'
+      );
+      return;
+    }
+
+    const phone = sanitizePhoneNumber(guardian.phone);
+    const message = buildGuardianSmsMessage({
+      target,
+      report,
+      callbackPhone,
+    });
+
+    Linking.openURL(`sms:${phone}?body=${encodeURIComponent(message)}`);
+  };
+
+  if (isLoading || !report) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.loadingCard}>
+          <ActivityIndicator size="large" color="#243B80" />
+          <Text style={styles.loadingTitle}>모델 결과 보고서 생성 중</Text>
+          <Text style={styles.loadingDesc}>
+            FastAPI 모델 출력과 통화 분석 정보를 정리하고 있습니다.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.screen}>
+      <View style={[styles.reportHeroCard, { backgroundColor: report.backgroundColor }]}>
+        <View style={[styles.reportBadge, { backgroundColor: report.color }]}>
+          <Text style={styles.reportBadgeText}>{report.label}</Text>
+        </View>
+
+        <Text style={styles.reportTitle}>통화 분석 결과 보고서</Text>
+        <Text style={styles.reportMetaText}>
+          {savedRecord ? '저장된 보고서 다시 보기' : '새 분석 보고서'}
+        </Text>
+        <Text style={styles.reportSummary}>{report.summary}</Text>
+
+        <View style={styles.reportScoreRow}>
+          <View style={styles.reportScoreBox}>
+            <Text style={[styles.reportScoreValue, { color: report.color }]}>
+              {report.riskScore}%
+            </Text>
+            <Text style={styles.reportScoreLabel}>위험도</Text>
+          </View>
+
+          <View style={styles.reportScoreBox}>
+            <Text style={styles.reportScoreValue}>{report.similarity}%</Text>
+            <Text style={styles.reportScoreLabel}>음성 유사도</Text>
+          </View>
+
+          <View style={styles.reportScoreBox}>
+            <Text style={styles.reportScoreValue}>{report.confidence}%</Text>
+            <Text style={styles.reportScoreLabel}>모델 신뢰도</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.reportSection}>
+        <Text style={styles.reportSectionTitle}>통화 정보</Text>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>표시된 상대</Text>
+          <Text style={styles.infoValue}>
+            {target?.name || '알 수 없음'} · {target?.relation || '관계 없음'}
+          </Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>재확인 번호</Text>
+          <Text style={styles.infoValue}>{callbackPhone || '등록된 번호 없음'}</Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>보호자</Text>
+          <Text style={styles.infoValue}>
+            {guardian ? `${guardian.name} · ${guardian.phone || '번호 없음'}` : '등록된 보호자 없음'}
+          </Text>
+        </View>
+
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>통화 시간</Text>
+          <Text style={styles.infoValue}>{callResult?.duration || 0}초</Text>
+        </View>
+      </View>
+
+      <View style={styles.reportSection}>
+        <Text style={styles.reportSectionTitle}>판단 근거</Text>
+
+        {report.reasons.map((reason, index) => (
+          <View key={`${reason}-${index}`} style={styles.reasonCard}>
+            <Text style={styles.reasonIndex}>{index + 1}</Text>
+            <Text style={styles.reasonText}>{reason}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.reportSection}>
+        <Text style={styles.reportSectionTitle}>대응 액션</Text>
+
+        <TouchableOpacity style={styles.actionButtonDanger} onPress={handleCallRegisteredNumber}>
+          <Text style={styles.actionButtonTitle}>저장된 번호로 재확인 전화</Text>
+          <Text style={styles.actionButtonDesc}>
+            {target?.name || '가족'} · {callbackPhone || '등록된 번호 없음'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.actionButtonPrimary,
+            !guardian?.phone && styles.actionButtonDisabled,
+          ]}
+          onPress={handleSendGuardianSms}
+          disabled={!guardian?.phone}
+        >
+          <Text style={styles.actionButtonTitle}>보호자에게 문자 보내기</Text>
+          <Text style={styles.actionButtonDesc}>
+            {guardian?.name || '등록된 보호자 없음'} {guardian?.phone ? `· ${guardian.phone}` : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.reportSection}>
+        <Text style={styles.reportSectionTitle}>지식그래프 요약</Text>
+
+        <View style={styles.kgRow}>
+          <Text style={styles.kgNode}>UserVoice</Text>
+          <Text style={styles.kgArrow}>→</Text>
+          <Text style={styles.kgNode}>ComparisonVoice</Text>
+        </View>
+
+        <View style={styles.kgRow}>
+          <Text style={styles.kgNode}>ObservedIssue</Text>
+          <Text style={styles.kgArrow}>→</Text>
+          <Text style={[styles.kgNode, { borderColor: report.color, color: report.color }]}>
+            Spoof
+          </Text>
+        </View>
+
+        <View style={styles.kgRow}>
+          <Text style={styles.kgNode}>Confidence</Text>
+          <Text style={styles.kgArrow}>→</Text>
+          <Text style={styles.kgNode}>UserAction</Text>
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.primaryButton} onPress={onHome}>
+        <Text style={styles.primaryButtonText}>홈으로 돌아가기</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -1437,6 +1974,260 @@ const styles = StyleSheet.create({
   guardianBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
+    fontWeight: '800',
+  },
+  loadingCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 18,
+    padding: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  loadingTitle: {
+    marginTop: 14,
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#243B80',
+  },
+  loadingDesc: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  reportHeroCard: {
+    borderRadius: 22,
+    padding: 22,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  reportBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  reportBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 13,
+  },
+  reportTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  reportMetaText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  reportSummary: {
+    fontSize: 13,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
+  reportScoreRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+  },
+  reportScoreBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  reportScoreValue: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  reportScoreLabel: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+  reportSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  reportSectionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#243B80',
+    marginBottom: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '700',
+  },
+  infoValue: {
+    flex: 1,
+    fontSize: 12,
+    color: '#111827',
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  reasonCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  reasonIndex: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#243B80',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 22,
+    fontSize: 11,
+    fontWeight: '900',
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  reasonText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+    lineHeight: 19,
+  },
+  actionButtonDanger: {
+    backgroundColor: '#EF4444',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 10,
+  },
+  actionButtonPrimary: {
+    backgroundColor: '#243B80',
+    borderRadius: 14,
+    padding: 16,
+  },
+  actionButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+  },
+  actionButtonTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  actionButtonDesc: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  kgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    flexWrap: 'wrap',
+  },
+  kgNode: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: '#334155',
+    fontSize: 11,
+    fontWeight: '800',
+    backgroundColor: '#F8FAFC',
+  },
+  kgArrow: {
+    marginHorizontal: 8,
+    color: '#94A3B8',
+    fontWeight: '900',
+  },
+  reportHistorySection: {
+    marginTop: 26,
+  },
+  emptyReportCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
+  reportHistoryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  reportHistoryMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reportHistoryBadge: {
+    minWidth: 48,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  reportHistoryBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  reportHistoryTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  reportHistoryDesc: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#4B5563',
+    fontWeight: '600',
+  },
+  reportHistoryDate: {
+    marginTop: 3,
+    fontSize: 11,
+    color: '#9CA3AF',
+  },
+  reportHistoryDelete: {
+    alignSelf: 'flex-end',
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+  },
+  reportHistoryDeleteText: {
+    color: '#DC2626',
+    fontSize: 11,
     fontWeight: '800',
   },
 });
