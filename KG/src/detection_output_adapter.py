@@ -20,7 +20,6 @@ from config import INPUT_PATH, DEFAULT_CALL_ID, DEFAULT_USER_ID
 def build_detection_output(
     confidence: float,
     point: float,
-    end: float,
     segment_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
@@ -86,8 +85,7 @@ def create_detection_output_json(
 
     detection_output = build_detection_output(
         confidence=confidence,
-        point=point,
-        end=end,
+        point=point
     )
 
     save_detection_output(
@@ -116,7 +114,7 @@ def create_detection_output_json_from_model_output(
 
     confidence = model_output["confidence"]
     point = model_output["callSegment"]["point"]
-    end = model_output["callSegment"]["end"]
+    # end = model_output["callSegment"]["end"]
 
     return create_detection_output_json(
         confidence=confidence,
