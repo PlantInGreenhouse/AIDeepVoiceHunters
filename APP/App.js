@@ -2029,12 +2029,20 @@ function ResultReportScreen({
       </View>
 
       <View style={styles.reportSection}>
-        <Text style={styles.reportSectionTitle}>판단 근거</Text>
+        <Text style={styles.reportSectionTitle}>둘만 아는 질문해 보기</Text>
+        <Text style={styles.reportSectionDesc}>
+          딥보이스는 가족만 아는 기억은 답할 수 없어요.{'\n'}
+          아래 같은 질문으로 직접 확인해 보세요.
+        </Text>
 
-        {report.reasons.map((reason, index) => (
-          <View key={`${reason}-${index}`} style={styles.reasonCard}>
-            <Text style={styles.reasonIndex}>{index + 1}</Text>
-            <Text style={styles.reasonText}>{reason}</Text>
+        {[
+          '출신 초등학교가 어디였지?',
+          '어릴 때 살던 동네 이름이 뭐였지?',
+          '우리 집 첫 강아지 이름이 뭐였더라?',
+        ].map((question, index) => (
+          <View key={`${question}-${index}`} style={styles.reasonCard}>
+            <Text style={styles.reasonIndex}>?</Text>
+            <Text style={styles.reasonText}>{question}</Text>
           </View>
         ))}
       </View>
@@ -2064,29 +2072,7 @@ function ResultReportScreen({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.reportSection}>
-        <Text style={styles.reportSectionTitle}>지식그래프 요약</Text>
-
-        <View style={styles.kgRow}>
-          <Text style={styles.kgNode}>UserVoice</Text>
-          <Text style={styles.kgArrow}>→</Text>
-          <Text style={styles.kgNode}>ComparisonVoice</Text>
-        </View>
-
-        <View style={styles.kgRow}>
-          <Text style={styles.kgNode}>ObservedIssue</Text>
-          <Text style={styles.kgArrow}>→</Text>
-          <Text style={[styles.kgNode, { borderColor: report.color, color: report.color }]}>
-            Spoof
-          </Text>
-        </View>
-
-        <View style={styles.kgRow}>
-          <Text style={styles.kgNode}>RiskScore</Text>
-          <Text style={styles.kgArrow}>→</Text>
-          <Text style={styles.kgNode}>UserAction</Text>
-        </View>
-      </View>
+     
 
       <TouchableOpacity style={styles.primaryButton} onPress={onHome}>
         <Text style={styles.primaryButtonText}>홈으로 돌아가기</Text>
@@ -2827,6 +2813,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#243B80',
     marginBottom: 12,
+  },
+  reportSectionDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 18,
+    marginBottom: 12,
+    fontWeight: '600',
   },
   infoRow: {
     flexDirection: 'row',
