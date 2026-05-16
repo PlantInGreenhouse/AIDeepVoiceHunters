@@ -4,13 +4,16 @@ import {
   Alert,
   SafeAreaView,
   Animated,
+  Image,
   Linking,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  Vibration,
   View,
 } from 'react-native';
 import {
@@ -23,7 +26,6 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio';
 import Svg, { Circle, Path } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
 import {
   Phone,
   PhoneOff,
@@ -472,12 +474,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle={isFullScreen ? 'light-content' : 'dark-content'} />
-      {!isFullScreen && (
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Voice Pass</Text>
-          <Text style={styles.headerSubtitle}>{currentStep.title} · {progress}</Text>
-        </View>
-      )}
+      
       {isFullScreen ? (
         // 통화 화면은 ScrollView 없이 그대로
         <>
@@ -558,8 +555,11 @@ function HomeScreen({
     <View style={styles.screen}>
       {/* 헤더 카드 */}
       <View style={styles.heroCard}>
-        <Text style={styles.heroEmoji}>🛡️</Text>
-        <Text style={styles.heroTitle}>Voice Pass</Text>
+        <Image 
+            source={require('./assets/logo.png')} 
+            style={styles.heroLogo}
+            resizeMode="contain"/>
+        {/* <Text style={styles.heroTitle}>Voice Pass</Text> */}
         <Text style={styles.heroSubtitle}>
           가족의 목소리를 등록하고, 의심스러운 통화로부터 보호하세요.
         </Text>
@@ -961,9 +961,9 @@ function CallScreen({ target, onEnd }) {
       !warningTriggered
     ) {
       setWarningTriggered(true);
-      // 진동: 알림 스타일 (짧고 또렷)
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-      // 음성 안내
+      // 진동: 짧고 또렷한 더블 패턴 [대기, 진동, 대기, 진동]
+      Vibration.vibrate([0, 400, 200, 400]);
+      // 음성 안내 (1회)
       if (warningPlayer) {
         try {
           warningPlayer.seekTo(0);
@@ -979,9 +979,9 @@ function CallScreen({ target, onEnd }) {
   useEffect(() => {
     if (phase === 'active' && riskScore >= DANGER_THRESHOLD && !dangerTriggered) {
       setDangerTriggered(true);
-      // 진동: 더 강한 패턴
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      // 음성 안내
+      // 진동: 강하고 긴 패턴 [대기, 진동, 대기, 진동, 대기, 진동]
+      Vibration.vibrate([0, 800, 300, 800, 300, 800]);
+      // 음성 안내 (1회)
       if (dangerPlayer) {
         try {
           dangerPlayer.seekTo(0);
@@ -992,28 +992,6 @@ function CallScreen({ target, onEnd }) {
       }
     }
   }, [phase, riskScore, dangerTriggered]);
-
-  // 위험 상태 지속 시 5초마다 반복 알림
-  useEffect(() => {
-    if (phase !== 'active') return;
-    if (riskScore < DANGER_THRESHOLD) return;
-
-    const interval = setInterval(() => {
-      // 진동 반복
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      // 음성 반복
-      if (dangerPlayer) {
-        try {
-          dangerPlayer.seekTo(0);
-          dangerPlayer.play();
-        } catch (e) {
-          console.warn('위험 음성 반복 실패', e);
-        }
-      }
-    }, DANGER_REPEAT_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [phase, riskScore >= DANGER_THRESHOLD]);
 
   const handleAccept = async () => {
     setPhase('active');
@@ -1030,6 +1008,7 @@ function CallScreen({ target, onEnd }) {
     if (player) player.pause();
     if (warningPlayer) warningPlayer.pause();
     if (dangerPlayer) dangerPlayer.pause();
+    Vibration.cancel();                            
     onEnd({ rejected: true, target });
   };
 
@@ -1037,6 +1016,7 @@ function CallScreen({ target, onEnd }) {
     if (player) player.pause();
     if (warningPlayer) warningPlayer.pause();
     if (dangerPlayer) dangerPlayer.pause();
+    Vibration.cancel();                           
     onEnd({
       rejected: false,
       target,
@@ -1174,7 +1154,7 @@ function CallScreen({ target, onEnd }) {
         <View style={styles.dangerBanner}>
           <AlertTriangle size={22} color="#FCA5A5" />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.dangerBannerTitle}>딥보이스 의심</Text>
+            <Text style={styles.dangerBannerTitle}>딥보이스 위험</Text>
             <Text style={styles.dangerBannerDesc}>
               등록된 음성과 일치하지 않습니다
             </Text>
@@ -1461,6 +1441,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     paddingHorizontal: 20,
@@ -1486,15 +1467,65 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroCard: {
-    backgroundColor: '#F1F4FF',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+    paddingHorizontal: 16,
     alignItems: 'center',
     marginBottom: 24,
+    // 그림자
+    shadowColor: '#FF3A4A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+    // 테두리
+    borderWidth: 1,
+    borderColor: 'rgba(255, 58, 74, 0.08)',
+  },
+  heroDivider: {
+    width: 40,
+    height: 3,
+    backgroundColor: '#FF3A4A',
+    borderRadius: 2,
+    marginTop: 16,
+    marginBottom: 16,
+    opacity: 0.6,
+  },
+  heroFeatures: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  heroFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  heroFeatureDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FF3A4A',
+    marginRight: 6,
+  },
+  heroFeatureText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#374151',
   },
   heroEmoji: {
     fontSize: 48,
     marginBottom: 12,
+  },
+  heroLogo: {               
+    width: '90%',         
+    height: 140,          
+    marginBottom: 25,
   },
   heroTitle: {
     fontSize: 26,
@@ -1503,10 +1534,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   heroSubtitle: {
-    color: '#4B5563',
+    color: '#6B7280',
     lineHeight: 22,
     fontSize: 14,
     textAlign: 'center',
+    fontWeight: '500',
   },
   primaryButton: {
     backgroundColor: '#243B80',
