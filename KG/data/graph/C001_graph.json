@@ -7,8 +7,8 @@
       "properties": {
         "callId": "C001",
         "userId": "U001",
-        "level": "safe",
-        "confidence": 0.0029990074690431356
+        "level": "danger",
+        "confidence": 0.9933887720108032
       }
     },
     {
@@ -31,7 +31,7 @@
         "callId": "C001",
         "label": "현재 통화 음성",
         "description": "실시간 통화에서 입력된 비교 대상 음성입니다.",
-        "recordedAt": "2026-05-16T21:13:18.526083",
+        "recordedAt": "2026-05-16T23:20:02.313454",
         "audioRef": null
       }
     },
@@ -43,16 +43,16 @@
         "segmentId": "SEG_C001_001",
         "label": "딥보이스 의심 구간",
         "description": "딥보이스 탐지 모델에서 조작 가능성이 높게 탐지된 구간입니다.",
-        "point": 3.580937623977661,
+        "point": 2.2433559894561768,
         "unit": "seconds",
-        "confidence": 0.0029990074690431356
+        "confidence": 0.9933887720108032
       }
     },
     {
       "id": "detectedPeriod:C001",
       "type": "DetectedPeriod",
       "properties": {
-        "point": 3.580937623977661,
+        "point": 2.2433559894561768,
         "unit": "seconds"
       }
     },
@@ -60,9 +60,9 @@
       "id": "spoofAssessment:C001",
       "type": "SpoofAssessment",
       "properties": {
-        "level": "safe",
-        "confidence": 0.0029990074690431356,
-        "summary": "딥보이스 탐지 가능성이 있는 구간이 3.580937623977661초에 탐지되었으나, 탐지 신뢰도는 낮은 수준입니다. 위험도가 낮으므로 추가 조치 없이 통화를 계속해도 되지만, 보안을 위해 주의가 필요합니다."
+        "level": "danger",
+        "confidence": 0.9933887720108032,
+        "summary": "딥보이스 탐지 가능성이 높은 2.2433559894561768초 부근에서 의심 신호가 탐지되었습니다. 위험도가 높으므로, 저장된 번호로 직접 확인하거나 송금 및 인증번호 전달을 중단하는 것이 권장됩니다."
       }
     },
     {
@@ -78,7 +78,7 @@
       "type": "SpoofCandidate",
       "properties": {
         "type": "DeepVoice",
-        "confidence": 0.0029990074690431356,
+        "confidence": 0.9933887720108032,
         "description": "TTS 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다."
       }
     },
@@ -86,29 +86,38 @@
       "id": "observedIssue:C001:1",
       "type": "ObservedIssue",
       "properties": {
-        "issue": "딥보이스 탐지 신뢰도 낮음",
+        "issue": "딥보이스 의심 구간 탐지",
         "evidenceType": "deepvoice_detection_confidence",
-        "score": 0.0029990074690431356,
-        "severity": "low",
-        "description": "딥보이스로 판단할 만큼의 신뢰도는 낮습니다."
+        "score": 0.9933887720108032,
+        "severity": "high",
+        "description": "2.2433559894561768부근에서 딥보이스 조작 가능성이 높은 신호가 탐지되었습니다."
       }
     },
     {
       "id": "action:C001:1",
       "type": "UserAction",
       "properties": {
-        "title": "통화 계속 가능",
-        "detail": "현재 탐지 결과만으로는 조작 음성 가능성이 낮습니다.",
-        "priority": "low"
+        "title": "저장된 번호로 직접 재확인하기",
+        "detail": "현재 통화를 끊고 기존에 저장된 가족 번호로 다시 연락하세요.",
+        "priority": "high"
       }
     },
     {
       "id": "action:C001:2",
       "type": "UserAction",
       "properties": {
-        "title": "추가 조치 필요 없음",
-        "detail": "탐지된 구간에서 딥보이스 의심 신호가 낮게 탐지되었습니다. 현재로서는 추가 조치가 필요하지 않습니다.",
-        "priority": "low"
+        "title": "송금 및 인증번호 전달 중단하기",
+        "detail": "상대방이 금전, 계좌, 인증번호, 개인정보를 요구했다면 즉시 중단하세요.",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "action:C001:3",
+      "type": "UserAction",
+      "properties": {
+        "title": "경찰 및 금융기관 신고하기",
+        "detail": "딥보이스 사기 피해가 의심됩니다. 가까운 경찰서나 금융기관에 신고하여 추가 피해를 방지하세요.",
+        "priority": "high"
       }
     }
   ],
@@ -124,7 +133,7 @@
       "target": "spoofCandidate:C001:DeepVoice",
       "type": "HAS_CANDIDATE",
       "properties": {
-        "confidence": 0.0029990074690431356
+        "confidence": 0.9933887720108032
       }
     },
     {
@@ -133,8 +142,8 @@
       "type": "HAS_OBSERVED_ISSUE",
       "properties": {
         "evidenceType": "deepvoice_detection_confidence",
-        "score": 0.0029990074690431356,
-        "severity": "low"
+        "score": 0.9933887720108032,
+        "severity": "high"
       }
     },
     {
@@ -148,7 +157,7 @@
       "target": "action:C001:1",
       "type": "RECOMMENDS_ACTION",
       "properties": {
-        "priority": "low"
+        "priority": "high"
       }
     },
     {
@@ -156,7 +165,15 @@
       "target": "action:C001:2",
       "type": "RECOMMENDS_ACTION",
       "properties": {
-        "priority": "low"
+        "priority": "high"
+      }
+    },
+    {
+      "source": "spoofAssessment:C001",
+      "target": "action:C001:3",
+      "type": "RECOMMENDS_ACTION",
+      "properties": {
+        "priority": "high"
       }
     },
     {
@@ -188,7 +205,7 @@
       "target": "spoofAssessment:C001",
       "type": "INDICATES_DEEPVOICE",
       "properties": {
-        "confidence": 0.0029990074690431356
+        "confidence": 0.9933887720108032
       }
     }
   ]

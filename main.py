@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import os
 import shutil
+from pydub import AudioSegment
+import soundfile as sf
+import json
+
 
 app = FastAPI()
 
@@ -18,52 +22,80 @@ def save_upload_file(upload_file: UploadFile, dst_path: str):
     with open(dst_path, "wb") as buffer:
         shutil.copyfileobj(upload_file.file, buffer)
 
-def run_voice_model(user_voice_path: str, comparison_voice_path: str):
-    """
-    여기에 실제 모델 추론 코드 연결.
-    user_voice_path: 등록 음성
-    comparison_voice_path: 통화 음성
-    """
-
-    # 예시 결과. 실제 모델 결과로 바꾸면 됨.
-    similarity = 32.5
-    spoof_probability = 78.0
-    confidence = 91.0
-
-    return {
-        "riskScore": round(spoof_probability),
-        "similarity": round(similarity),
-        "confidence": round(confidence),
-        "spoofProbability": round(spoof_probability),
-        "summary": "등록 음성과 통화 음성의 화자 특성이 크게 달라 딥보이스 의심 상태로 판단되었습니다.",
-        "reasons": [
-            "등록 음성과 통화 음성의 화자 임베딩 유사도가 낮게 측정되었습니다.",
-            "일부 구간에서 합성음 또는 변조 음성으로 의심되는 패턴이 관찰되었습니다.",
-            "모델 신뢰도가 기준값 이상으로 측정되었습니다."
-        ]
-    }
-
 @app.get("/")
 async def root():
     return {"message": "AIDeepVoiceHunters 서버가 정상적으로 작동 중입니다!"}
-
 
 @app.post("/analyze")
 async def analyze(
     user_voice: UploadFile = File(...),
     comparison_voice: UploadFile = File(...)
 ):
+    ref_voice = comparison_voice
+    
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            user_path = os.path.join(tmpdir, "user_voice.m4a")
-            comparison_path = os.path.join(tmpdir, "comparison_voice.m4a")
+        temp_dir = "./temp"
+        os.makedirs(temp_dir, exist_ok=True)
+            
+        user_path = "./temp/user_voice.m4a"
+        ref_path = "./temp/ref_voice.m4a"
 
-            save_upload_file(user_voice, user_path)
-            save_upload_file(comparison_voice, comparison_path)
+        save_upload_file(user_voice, user_path)
+        save_upload_file(ref_voice, ref_path)
 
-            result = run_voice_model(user_path, comparison_path)
 
-            return result
+        user_audio = AudioSegment.from_file(user_path, format="m4a")
+        user_flac_path = os.path.splitext(user_path)[0] + ".flac"
+        user_audio.export(user_flac_path, format="flac")
+
+        ref_audio = AudioSegment.from_file(ref_path, format="m4a")
+        ref_flac_path = os.path.splitext(ref_path)[0] + ".flac"
+        ref_audio.export(ref_flac_path, format="flac")
+
+
+        ##stereo
+        X, x_sr = sf.read(user_flac_path)
+        if len(X.shape) == 2: #2차원이고
+            if X.shape[-1] == 2: #2채널이면
+                X = X.mean(axis = -1)
+
+        Ref, ref_sr = sf.read(ref_flac_path)
+        if len(Ref.shape) == 2: #2차원이고
+            if Ref.shape[-1] == 2: #2채널이면
+                Ref = Ref.mean(axis = -1)
+
+        sf.write(user_flac_path, X, x_sr)
+        sf.write(ref_flac_path, Ref, ref_sr)
+
+        from run_cls_kg import run_both
+        run_both(user_flac_path, ref_flac_path)
+
+        json_path = "./KG/data/graph/C001_graph.json"
+        # 파일 열기 (한글 깨짐 방지를 위해 encoding='utf-8'을 꼭 넣어주세요)
+        with open(json_path, 'r', encoding='utf-8') as file:
+            final_result = json.load(file)
+        node_list = final_result["nodes"]
+
+        #Find probability
+        for item in node_list:
+            if item.get("type") == "SpoofAssessment":
+                prob = item.get("properties").get("confidence")
+                summary = item.get("properties").get("summary")
+                break  
+
+        #point
+        for item in node_list:
+            if item.get("type") == "DetectedPeriod":
+                point = item.get("properties").get("point")
+                break  
+
+        print("server end")
+
+        return {
+            "riskScore": prob,
+            "summary": summary,
+            "spoofPoint": point,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

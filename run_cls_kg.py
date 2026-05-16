@@ -30,15 +30,15 @@ def get_model(model_config: Dict, device: torch.device):
 
     return model
 
-def run_detection():
+def run_detection(audio_path, ref_audio_path):
     with open("./CLSModel/aasist/config/AASIST.conf", "r") as f_json:
         config = json.loads(f_json.read())
     model_config = config["model_config"]
     ######settings
     device = "cuda"
     ckpt_dir = "CLSModel/aasist/results/train_aasist_pass/ckpt_1.pth"
-    audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/003/104/104_003_0019.flac"
-    ref_audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/gen/104/104_003_0019_fake.flac"
+    # audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/003/104/104_003_0019.flac"
+    # ref_audio_path = "/work/jiwoo3853/AIDeepVoiceHunters/CLSModel/data/test_data_01/gen/104/104_003_0019_fake.flac"
     cut = 64600
 
     # define model architecture
@@ -73,6 +73,7 @@ def run_detection():
     x_inp = Tensor(X_pad)
 
     Ref, ref_sr = sf.read(ref_audio_path)
+    
     Ref_pad = pad_center(Ref, ref_sr, cut)
     ref_inp = Tensor(Ref_pad)
 
@@ -111,7 +112,7 @@ KG_SRC_DIR = KG_ROOT / "src"
 sys.path.append(str(KG_SRC_DIR))
 
 from detection_output_adapter import create_detection_output_json_from_model_output
-from main import main as build_kg_main
+from kg_main import main as build_kg_main
 
 def run_kg(model_output):
     create_detection_output_json_from_model_output(
@@ -123,14 +124,10 @@ def run_kg(model_output):
 
 
 
-def run_both():
-    model_output = run_detection()
+def run_both(audio_path, ref_audio_path):
+    model_output = run_detection(audio_path, ref_audio_path)
     print("model output: ", model_output)
     run_kg(model_output)
-    breakpoint()
-
-    final_output = None
-    return final_output
 
 
 
