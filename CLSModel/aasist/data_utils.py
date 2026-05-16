@@ -59,6 +59,68 @@ def pad_random(x: np.ndarray, max_len: int = 64600):
     return padded_x
 
 
+import os
+class Dataset_Deepvoice(Dataset): #train / test 겸용
+    def __init__(self, base_dir):
+        self.base_dir = base_dir
+        self.cut = 64600  # take ~4 sec audio (64600 samples)
+
+        real_paths = []
+        real_labels = []
+        real_refs = []
+        real_audio_voices = base_dir + "003/"
+        for r_voice in os.listdir(real_audio_voices):
+            cur_fname = os.listdir(real_audio_voices + r_voice)[0]
+            #flac이 아니면(tras.txt라면) 다른 파일로 바꾸기
+            if os.path.splitext(cur_fname)[1] != ".flac":
+                cur_fname = os.listdir(real_audio_voices + r_voice)[1] #두번째로
+            cur_ref = os.path.join(real_audio_voices + r_voice, cur_fname)
+            for r_fname in os.listdir(real_audio_voices + r_voice):
+                if os.path.splitext(r_fname)[1] != ".flac":
+                    continue
+                real_paths.append(os.path.join(real_audio_voices + r_voice, r_fname))
+                real_labels.append(0)
+                real_refs.append(cur_ref)
+
+        fake_paths = []
+        fake_labels = []
+        fake_refs = []
+        fake_audio_voices = base_dir + "gen/"
+        for f_voice in os.listdir(fake_audio_voices):
+            #얘는 real껄로 ref를
+            cur_fname = os.listdir(real_audio_voices + f_voice)[0]
+            #flac이 아니면(tras.txt라면) 다른 파일로 바꾸기
+            if os.path.splitext(cur_fname)[1] != ".flac":
+                cur_fname = os.listdir(real_audio_voices + f_voice)[1] #두번째로
+            cur_ref = os.path.join(real_audio_voices + f_voice, cur_fname)
+
+            for f_fname in os.listdir(fake_audio_voices + f_voice):
+                if os.path.splitext(f_fname)[1] != ".flac":
+                    continue
+                fake_paths.append(os.path.join(fake_audio_voices + f_voice, f_fname))
+                fake_labels.append(1)
+                fake_refs.append(cur_ref)
+        self.paths = real_paths + fake_paths
+        self.labels = real_labels + fake_labels
+        self.refs = real_refs + fake_refs
+
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, index):
+        X, x_sr = sf.read(self.paths[index])
+        X_pad = pad_random(X, self.cut)
+        x_inp = Tensor(X_pad)
+
+        Ref, ref_sr = sf.read(self.refs[index])
+        Ref_pad = pad_random(Ref, self.cut)
+        ref_inp = Tensor(Ref_pad)
+
+        
+        y = self.labels[index]
+        return x_inp, y, ref_inp
+
 class Dataset_ASVspoof2019_train(Dataset):
     def __init__(self, list_IDs, labels, base_dir):
         """self.list_IDs	: list of strings (each string: utt key),

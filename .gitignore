@@ -1,5 +1,8 @@
 CLSModel/data/test_data_01/
 CLSModel/data/train_data_01/
+CLSModel/aasist/wandb
+CLSModel/aasist/wandb/__pycache__
+CLSModel/aasist/results
 *.tar.gz
 *.gz
 *.pth
