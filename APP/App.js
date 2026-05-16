@@ -237,7 +237,7 @@ function HomeScreen({ familyList, onAddFamily, onStartAnalysis, onDeleteFamily }
         onPress={onStartAnalysis}
         disabled={familyList.length === 0}
       >
-        <Text style={styles.primaryButtonText}>🎙️ 통화 분석 시작</Text>
+        <Text style={styles.primaryButtonText}>실시간 분석 시작</Text>
       </TouchableOpacity>
     </View>
   );
@@ -437,7 +437,7 @@ function SelectTargetScreen({ familyList, onBack, onSelect }) {
           onPress={() => selected && onSelect(selected)}
           disabled={!selected}
         >
-          <Text style={styles.primaryButtonText}>📞 통화 시뮬레이션 시작</Text>
+          <Text style={styles.primaryButtonText}>실시간 분석 시작</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -462,17 +462,22 @@ function CallScreen({ target, onEnd }) {
     }, 1000);
     return () => clearInterval(timer);
   }, [phase]);
+  
 
   // 위험도 분석 (1.5초마다)
   useEffect(() => {
     if (phase !== 'active') return;
+    
+    let localElapsed = 0;
     const interval = setInterval(async () => {
-      const result = await analyzeAudioChunk(elapsedSec, target);
+      localElapsed += ANALYSIS_INTERVAL / 1000;  // 매 호출마다 1.5초씩 증가
+      const result = await analyzeAudioChunk(localElapsed, target);
       setRiskScore(result.risk);
       setRiskHistory((prev) => [...prev, result.risk]);
     }, ANALYSIS_INTERVAL);
+    
     return () => clearInterval(interval);
-  }, [phase, elapsedSec]);
+  }, [phase, target]);  //
 
   // 위험 임계값 도달 시 경고
   useEffect(() => {
@@ -514,7 +519,6 @@ function CallScreen({ target, onEnd }) {
     return `${m}:${s}`;
   };
 
-  // 위험도에 따른 색상
   const getRiskColor = () => {
     if (riskScore >= DANGER_THRESHOLD) return '#DC2626';
     if (riskScore >= WARNING_THRESHOLD) return '#F59E0B';
@@ -527,106 +531,169 @@ function CallScreen({ target, onEnd }) {
     return '안전';
   };
 
-  // ===== 수신 화면 =====
+  // ===== 수신 화면 (갤럭시 스타일) =====
   if (phase === 'incoming') {
     return (
-      <View style={styles.callScreenIncoming}>
-        <Text style={styles.callIncomingHint}>걸려온 전화</Text>
-        <Text style={styles.callerNameLarge}>{target.name}</Text>
-        <Text style={styles.callerRelation}>{target.relation}</Text>
-        {target.phone ? (
-          <Text style={styles.callerPhone}>{target.phone}</Text>
-        ) : null}
-
-        <View style={styles.callAvatarLarge}>
-          <Text style={{ fontSize: 80 }}>👤</Text>
+      <View style={styles.galaxyIncomingScreen}>
+        {/* 상단 영역: 라벨 + 이름 + 번호 */}
+        <View style={styles.galaxyIncomingTop}>
+          <Text style={styles.galaxyIncomingLabel}>수신전화</Text>
+          <Text style={styles.galaxyIncomingName}>{target.name}</Text>
+          <Text style={styles.galaxyIncomingPhone}>
+            휴대전화  {target.phone || '010-0000-0000'}
+          </Text>
+          <Text style={styles.galaxyIncomingSubAction}>메시지 보내기</Text>
         </View>
 
-        <View style={styles.callButtonsContainer}>
-          <View style={styles.callButtonWrap}>
-            <TouchableOpacity
-              style={[styles.callCircleButton, { backgroundColor: '#DC2626' }]}
-              onPress={handleReject}
-            >
-              <Text style={styles.callCircleButtonText}>✕</Text>
-            </TouchableOpacity>
-            <Text style={styles.callButtonLabel}>거절</Text>
+        {/* 중앙 영역: 마지막 통화 정보 (장식) */}
+        <View style={styles.galaxyIncomingMiddle}>
+          <Text style={styles.galaxyIncomingPhoneIcon}>📞</Text>
+          <Text style={styles.galaxyIncomingLastCall}>
+            관계: {target.relation}
+          </Text>
+        </View>
+
+        {/* 통화 어시스트 알약 버튼 */}
+        <View style={styles.galaxyAssistContainer}>
+          <View style={styles.galaxyAssistPill}>
+            <Text style={styles.galaxyAssistText}>✨ 통화 어시스트</Text>
           </View>
-          <View style={styles.callButtonWrap}>
+        </View>
+
+        {/* 하단: 수락/거절 버튼 */}
+        <View style={styles.galaxyIncomingButtons}>
+          <View style={styles.galaxyButtonWrap}>
             <TouchableOpacity
-              style={[styles.callCircleButton, { backgroundColor: '#10B981' }]}
+              style={styles.galaxyAcceptButton}
               onPress={handleAccept}
             >
-              <Text style={styles.callCircleButtonText}>📞</Text>
+              <Text style={styles.galaxyButtonIcon}>📞</Text>
             </TouchableOpacity>
-            <Text style={styles.callButtonLabel}>수락</Text>
           </View>
+          <View style={styles.galaxyButtonWrap}>
+            <TouchableOpacity
+              style={styles.galaxyRejectButton}
+              onPress={handleReject}
+            >
+              <Text style={styles.galaxyButtonIcon}>📞</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 맨 아래 메시지 보내기 */}
+        <View style={styles.galaxyBottomHint}>
+          <View style={styles.galaxyBottomBar} />
+          <Text style={styles.galaxyBottomHintText}>메시지 보내기</Text>
         </View>
       </View>
     );
   }
 
-  // 통화 중 화면
+  // ===== 통화 중 화면 (갤럭시 스타일) =====
   return (
-    <View style={styles.callScreenActive}>
-      {/* 상단: 상대 정보 + 통화 시간 */}
-      <View style={styles.callTopInfo}>
-        <Text style={styles.callerNameMedium}>{target.name}</Text>
-        <Text style={styles.callerRelationLight}>{target.relation}</Text>
-        <Text style={styles.callDuration}>{formatTime(elapsedSec)}</Text>
+    <View style={styles.galaxyActiveScreen}>
+      {/* 상단: 통화 시간 + 분석 시간 */}
+      <View style={styles.galaxyActiveTop}>
+        <Text style={styles.galaxyActiveTimer}>
+          📞 {formatTime(elapsedSec)}  /  🔴 분석 {formatTime(elapsedSec)}
+        </Text>
       </View>
 
-      {/* 중앙: 위험도 게이지 */}
-      <View style={styles.riskGaugeContainer}>
-        <Text style={styles.riskGaugeLabel}>실시간 위험도</Text>
-        <View style={styles.riskCircle}>
-          <Text style={[styles.riskScore, { color: getRiskColor() }]}>
+      {/* 이름 + 번호 */}
+      <View style={styles.galaxyActiveNameArea}>
+        <Text style={styles.galaxyActiveName}>{target.name}</Text>
+        <Text style={styles.galaxyActivePhone}>
+          휴대전화  {target.phone || '010-0000-0000'}
+        </Text>
+      </View>
+
+      {/* 위험도 게이지 (가운데 영역) */}
+      <View style={styles.galaxyRiskArea}>
+        <Text style={styles.galaxyRiskLabel}>실시간 분석 중</Text>
+        <View style={styles.galaxyRiskCircle}>
+          <Text style={[styles.galaxyRiskScore, { color: getRiskColor() }]}>
             {riskScore}
           </Text>
-          <Text style={styles.riskScoreUnit}>/ 100</Text>
+          <Text style={styles.galaxyRiskUnit}>/ 100</Text>
         </View>
-        <View style={[styles.riskBadge, { backgroundColor: getRiskColor() }]}>
-          <Text style={styles.riskBadgeText}>{getRiskLabel()}</Text>
+        <View style={[styles.galaxyRiskBadge, { backgroundColor: getRiskColor() }]}>
+          <Text style={styles.galaxyRiskBadgeText}>{getRiskLabel()}</Text>
         </View>
-
-        {/* 위험도 바 */}
-        <View style={styles.riskBarContainer}>
+        <View style={styles.galaxyRiskBarContainer}>
           <View
             style={[
-              styles.riskBarFill,
+              styles.galaxyRiskBarFill,
               { width: `${riskScore}%`, backgroundColor: getRiskColor() },
             ]}
           />
         </View>
-
-        {/* 분석 상태 */}
-        <Text style={styles.analysisStatus}>
-          음성 분석 중 ({Math.floor(elapsedSec / 1.5)}회 분석 완료)
-        </Text>
       </View>
 
       {/* 위험 경고 배너 */}
       {warningShown && (
-        <View style={styles.warningBanner}>
-          <Text style={styles.warningBannerEmoji}>⚠️</Text>
+        <View style={styles.galaxyWarningBanner}>
+          <Text style={styles.galaxyWarningEmoji}>⚠️</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.warningBannerTitle}>딥보이스 의심</Text>
-            <Text style={styles.warningBannerDesc}>
-              등록된 음성과 일치하지 않습니다. 즉시 통화를 종료하세요.
+            <Text style={styles.galaxyWarningTitle}>딥보이스 의심</Text>
+            <Text style={styles.galaxyWarningDesc}>
+              등록된 음성과 일치하지 않습니다
             </Text>
           </View>
         </View>
       )}
 
-      {/* 하단: 통화 종료 버튼 */}
-      <View style={styles.callBottomButtons}>
-        <TouchableOpacity
-          style={[styles.callCircleButton, { backgroundColor: '#DC2626' }]}
-          onPress={handleEnd}
-        >
-          <Text style={styles.callCircleButtonText}>📞</Text>
+      {/* 어시스트 알약 */}
+      <View style={styles.galaxyAssistContainer}>
+        <View style={styles.galaxyAssistPill}>
+          <Text style={styles.galaxyAssistText}>통화 어시스트</Text>
+        </View>
+      </View>
+
+      {/* 하단 기능 카드 */}
+      <View style={styles.galaxyControlCard}>
+        <View style={styles.galaxyControlGrid}>
+          <View style={styles.galaxyControlItem}>
+            <View style={[styles.galaxyControlIcon, { backgroundColor: '#10B981' }]}>
+              <Text style={styles.galaxyControlEmoji}>🔴</Text>
+            </View>
+            <Text style={styles.galaxyControlLabel}>분석 중지</Text>
+          </View>
+          <View style={styles.galaxyControlItem}>
+            <View style={styles.galaxyControlIcon}>
+              <Text style={styles.galaxyControlEmoji}>📹</Text>
+            </View>
+            <Text style={styles.galaxyControlLabelInactive}>영상통화</Text>
+          </View>
+          <View style={styles.galaxyControlItem}>
+            <View style={styles.galaxyControlIcon}>
+              <Text style={styles.galaxyControlEmoji}>📶</Text>
+            </View>
+            <Text style={styles.galaxyControlLabel}>블루투스</Text>
+          </View>
+          <View style={styles.galaxyControlItem}>
+            <View style={styles.galaxyControlIcon}>
+              <Text style={styles.galaxyControlEmoji}>🔊</Text>
+            </View>
+            <Text style={styles.galaxyControlLabel}>스피커</Text>
+          </View>
+          <View style={styles.galaxyControlItem}>
+            <View style={styles.galaxyControlIcon}>
+              <Text style={styles.galaxyControlEmoji}>🎤</Text>
+            </View>
+            <Text style={styles.galaxyControlLabel}>내 소리 차단</Text>
+          </View>
+          <View style={styles.galaxyControlItem}>
+            <View style={styles.galaxyControlIcon}>
+              <Text style={styles.galaxyControlEmoji}>⌨️</Text>
+            </View>
+            <Text style={styles.galaxyControlLabel}>키패드</Text>
+          </View>
+        </View>
+
+        {/* 종료 버튼 */}
+        <TouchableOpacity style={styles.galaxyEndButton} onPress={handleEnd}>
+          <Text style={styles.galaxyEndButtonIcon}>📞</Text>
         </TouchableOpacity>
-        <Text style={styles.callButtonLabel}>통화 종료</Text>
       </View>
     </View>
   );
@@ -886,180 +953,271 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
   },
-
-  // === 통화 수신 화면 ===
-  callScreenIncoming: {
+  // 수신 화면
+  galaxyIncomingScreen: {
     flex: 1,
-    backgroundColor: '#1F2937',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 60,
-    paddingHorizontal: 30,
-  },
-  callIncomingHint: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  callerNameLarge: {
-    color: '#FFFFFF',
-    fontSize: 36,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  callerRelation: {
-    color: '#D1D5DB',
-    fontSize: 18,
-    marginTop: 4,
-  },
-  callerPhone: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginTop: 2,
-  },
-  callAvatarLarge: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: '#374151',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  callButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  callButtonWrap: {
-    alignItems: 'center',
-  },
-  callCircleButton: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  callCircleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 28,
-    fontWeight: '900',
-  },
-  callButtonLabel: {
-    color: '#D1D5DB',
-    fontSize: 13,
-  },
-
-  // === 통화 중 화면 ===
-  callScreenActive: {
-    flex: 1,
-    backgroundColor: '#1F2937',
-    paddingVertical: 40,
+    backgroundColor: '#2D2F5E',
+    paddingTop: 50,
+    paddingBottom: 30,
     paddingHorizontal: 24,
   },
-  callTopInfo: {
+  galaxyIncomingTop: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginTop: 20,
   },
-  callerNameMedium: {
+  galaxyIncomingLabel: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    marginBottom: 30,
+  },
+  galaxyIncomingName: {
     color: '#FFFFFF',
-    fontSize: 24,
+    fontSize: 38,
     fontWeight: '900',
   },
-  callerRelationLight: {
-    color: '#9CA3AF',
-    fontSize: 14,
-    marginTop: 2,
-  },
-  callDuration: {
-    color: '#10B981',
-    fontSize: 18,
-    fontWeight: '700',
+  galaxyIncomingPhone: {
+    color: '#D1D5DB',
+    fontSize: 15,
     marginTop: 8,
-    fontFamily: 'monospace',
   },
-  riskGaugeContainer: {
+  galaxyIncomingSubAction: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    marginTop: 14,
+  },
+  galaxyIncomingMiddle: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  riskGaugeLabel: {
-    color: '#9CA3AF',
+  galaxyIncomingPhoneIcon: {
+    fontSize: 18,
+    marginBottom: 6,
+    opacity: 0.7,
+  },
+  galaxyIncomingLastCall: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  galaxyAssistContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  galaxyAssistPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+  },
+  galaxyAssistText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  galaxyIncomingButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 30,
+  },
+  galaxyButtonWrap: {
+    alignItems: 'center',
+  },
+  galaxyAcceptButton: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  galaxyRejectButton: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    transform: [{ rotate: '135deg' }],
+  },
+  galaxyButtonIcon: {
+    fontSize: 32,
+    color: '#FFFFFF',
+  },
+  galaxyBottomHint: {
+    alignItems: 'center',
+  },
+  galaxyBottomBar: {
+    width: 80,
+    height: 3,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 2,
+    marginBottom: 8,
+  },
+  galaxyBottomHintText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: 16,
   },
-  riskCircle: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: '#111827',
-    borderWidth: 4,
-    borderColor: '#374151',
+
+  // 통화중 화면
+  galaxyActiveScreen: {
+    flex: 1,
+    backgroundColor: '#2D2F5E',
+    paddingTop: 40,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+  },
+  galaxyActiveTop: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  galaxyActiveTimer: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  galaxyActiveNameArea: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  galaxyActiveName: {
+    color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  galaxyActivePhone: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    marginTop: 6,
+  },
+  galaxyRiskArea: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  riskScore: {
-    fontSize: 56,
+  galaxyRiskLabel: {
+    color: '#D1D5DB',
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  galaxyRiskCircle: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  galaxyRiskScore: {
+    fontSize: 50,
     fontWeight: '900',
   },
-  riskScoreUnit: {
-    color: '#6B7280',
-    fontSize: 14,
+  galaxyRiskUnit: {
+    color: '#9CA3AF',
+    fontSize: 13,
   },
-  riskBadge: {
-    paddingHorizontal: 20,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginTop: 16,
+  galaxyRiskBadge: {
+    paddingHorizontal: 18,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginTop: 14,
   },
-  riskBadgeText: {
+  galaxyRiskBadgeText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
   },
-  riskBarContainer: {
-    width: '100%',
-    height: 8,
-    backgroundColor: '#374151',
-    borderRadius: 4,
-    marginTop: 20,
+  galaxyRiskBarContainer: {
+    width: '80%',
+    height: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 3,
+    marginTop: 16,
     overflow: 'hidden',
   },
-  riskBarFill: {
+  galaxyRiskBarFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  analysisStatus: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 12,
-  },
-  warningBanner: {
+  galaxyWarningBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#7F1D1D',
+    backgroundColor: 'rgba(220, 38, 38, 0.95)',
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
+    padding: 12,
+    marginHorizontal: 8,
+    marginBottom: 16,
   },
-  warningBannerEmoji: {
-    fontSize: 28,
-    marginRight: 12,
+  galaxyWarningEmoji: {
+    fontSize: 24,
+    marginRight: 10,
   },
-  warningBannerTitle: {
-    color: '#FCA5A5',
+  galaxyWarningTitle: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '900',
     marginBottom: 2,
   },
-  warningBannerDesc: {
+  galaxyWarningDesc: {
     color: '#FECACA',
     fontSize: 12,
   },
-  callBottomButtons: {
-    alignItems: 'center',
+  galaxyControlCard: {
+    backgroundColor: 'rgba(220, 220, 230, 0.95)',
+    borderRadius: 20,
+    padding: 20,
+  },
+  galaxyControlGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
     marginBottom: 20,
+  },
+  galaxyControlItem: {
+    width: '33.33%',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  galaxyControlIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  galaxyControlEmoji: {
+    fontSize: 22,
+  },
+  galaxyControlLabel: {
+    color: '#1F2937',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  galaxyControlLabelInactive: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  galaxyEndButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#DC2626',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+  },
+  galaxyEndButtonIcon: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    transform: [{ rotate: '135deg' }],
   },
 });
