@@ -137,12 +137,12 @@ def train_epoch(
     criterion = nn.CrossEntropyLoss(weight=weight)
 
     running_loss = 0.
-    for batch_x, batch_y, batch_ref in tqdm(trn_loader):
+    for batch_x, batch_y, batch_ref, meta in tqdm(trn_loader):
         batch_x = batch_x.to(device)
         batch_ref = batch_ref.to(device)
         batch_y = batch_y.view(-1).type(torch.int64).to(device) #B
 
-        _, batch_out = model(batch_x, batch_ref, time_attention = True) #B x 2
+        _, batch_out, _ = model(batch_x, batch_ref, time_attention = True) #B x 2
 
         batch_loss = criterion(batch_out, batch_y)
         running_loss += batch_loss.item() 
@@ -165,12 +165,12 @@ def val_epoch(
 
     running_loss = 0.
     with torch.no_grad():
-        for batch_x, batch_y, batch_ref in tqdm(val_loader): 
+        for batch_x, batch_y, batch_ref, meta in tqdm(val_loader): 
             batch_x = batch_x.to(device)
             batch_ref = batch_ref.to(device)
             batch_y = batch_y.view(-1).type(torch.int64).to(device) #B
 
-            _, batch_out = model(batch_x, batch_ref, time_attention = True) #B x 2
+            _, batch_out, _ = model(batch_x, batch_ref, time_attention = True) #B x 2
 
             batch_loss = criterion(batch_out, batch_y)
             running_loss += batch_loss.item() 

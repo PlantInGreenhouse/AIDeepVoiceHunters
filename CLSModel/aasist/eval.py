@@ -53,7 +53,7 @@ def main(args: argparse.Namespace) -> None:
 
     model.to(device) 
 
-    dataset = Dataset_Deepvoice("../data/test_data_01/")
+    dataset = Dataset_Deepvoice("../data/test_data_01/", is_test=True)
     test_loader = DataLoader(
         dataset, 
         batch_size=1, 
@@ -67,13 +67,13 @@ def main(args: argparse.Namespace) -> None:
 
     model.eval()
     with torch.no_grad():
-        for batch_x, batch_y, batch_ref in tqdm(test_loader): 
+        for batch_x, batch_y, batch_ref, meta in tqdm(test_loader): 
             batch_x = batch_x.to(device)
             batch_ref = batch_ref.to(device)
             batch_y = batch_y.view(-1).type(torch.int64).to(device) #B
 
-            _, batch_out = model(batch_x, batch_ref, time_attention = True) #B x 2
-
+            _, batch_out, t_attn_score = model(batch_x, batch_ref, time_attention = True) #B x 2
+            # t_attn_score : B 1 self.cut
             preds = torch.argmax(batch_out, dim=1)
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(batch_y.cpu().numpy())

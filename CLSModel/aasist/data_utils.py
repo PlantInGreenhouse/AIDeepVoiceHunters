@@ -58,12 +58,41 @@ def pad_random(x: np.ndarray, max_len: int = 64600):
     padded_x = np.tile(x, (num_repeats))[:max_len]
     return padded_x
 
+def pad_center(x: np.ndarray, sr: int, max_len: int = 64600):
+    """
+    오디오 데이터를 고정 길이로 맞추며, 길 경우 중앙을 크롭합니다.
+    
+    Returns:
+        padded_x (np.ndarray): 길이가 맞춰진 오디오 배열
+        stt_sec (float): 원본 오디오 기준 시작 시간 (초)
+        end_sec (float): 원본 오디오 기준 종료 시간 (초)
+    """
+    x_len = x.shape[0]
+
+    # 1. 오디오가 목표 길이보다 길거나 같을 때 (Center Crop)
+    if x_len >= max_len:
+        # 전체 길이에서 남는 길이의 딱 절반을 시작점으로 잡습니다.
+        stt = (x_len - max_len) // 2 
+        end = stt + max_len
+        
+        # 샘플 인덱스를 샘플링 레이트로 나누어 초 단위로 변환합니다.
+        stt_sec = stt / sr
+        end_sec = end / sr
+        
+        return x[stt:end]
+
+    # 2. 오디오가 목표 길이보다 짧을 때 (Tile Padding)
+    num_repeats = int(max_len / x_len) + 1
+    padded_x = np.tile(x, num_repeats)[:max_len]
+    
+    return padded_x
 
 import os
 class Dataset_Deepvoice(Dataset): #train / test 겸용
-    def __init__(self, base_dir):
+    def __init__(self, base_dir, is_test = False):
         self.base_dir = base_dir
         self.cut = 64600  # take ~4 sec audio (64600 samples)
+        self.is_test = is_test
 
         real_paths = []
         real_labels = []
@@ -110,11 +139,31 @@ class Dataset_Deepvoice(Dataset): #train / test 겸용
 
     def __getitem__(self, index):
         X, x_sr = sf.read(self.paths[index])
-        X_pad = pad_random(X, self.cut)
+        meta = 0
+        if self.is_test:
+            X_len_ori = X.shape[0]
+
+            X_pad = pad_center(X, x_sr, self.cut)
+            if X_len_ori >= X_pad.shape[0]: #cropped case
+                mode = "crop"
+            else: #padding case
+                mode = "pad"
+            
+            meta = [X_len_ori, X_pad.shape[0], x_sr, self.cut]
+
+            # ##temp recover
+            # stt = (X_len_ori - X_pad.shape[0]) // 2
+            # stt_sec = stt / x_sr
+            # out_time = stt_sec + (self.cut // 2 / x_sr)
+        else:
+            X_pad = pad_random(X, self.cut)
         x_inp = Tensor(X_pad)
 
         Ref, ref_sr = sf.read(self.refs[index])
-        Ref_pad = pad_random(Ref, self.cut)
+        if self.is_test:
+            Ref_pad = pad_center(Ref, ref_sr, self.cut)
+        else:
+            Ref_pad = pad_random(Ref, self.cut)
         ref_inp = Tensor(Ref_pad)
 
         ###_---
@@ -127,7 +176,7 @@ class Dataset_Deepvoice(Dataset): #train / test 겸용
 
         
         y = self.labels[index]
-        return x_inp, y, ref_inp
+        return x_inp, y, ref_inp, meta
 
 class Dataset_ASVspoof2019_train(Dataset):
     def __init__(self, list_IDs, labels, base_dir):
