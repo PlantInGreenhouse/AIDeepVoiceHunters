@@ -1,6 +1,3 @@
-# kg_store.py: KG json 저장/로드
-
-
 # src/kg_store.py
 
 import json

@@ -35,7 +35,6 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
     if not detected_segments:
         raise ValueError("detectedSegments must contain at least one segment.")
 
-    # 1차 구현에서는 confidence가 가장 높은 구간을 대표 구간으로 사용한다.
     primary_segment = max(
         detected_segments,
         key=lambda segment: segment["confidence"]
@@ -97,8 +96,5 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
             ]
         },
 
-        # 전체 탐지 구간 보존.
-        # 현재 kg_builder.py는 대표 구간만 사용하지만,
-        # 나중에 multi-segment KG로 확장할 때 사용할 수 있다.
         "detectedSegments": detected_segments
     }

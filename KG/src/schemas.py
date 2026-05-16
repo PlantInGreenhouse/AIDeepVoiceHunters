@@ -1,6 +1,3 @@
-# schemas.py: 입력 데이터, node, edge 구조 정의
-
-
 # src/schemas.py
 
 from dataclasses import dataclass, field

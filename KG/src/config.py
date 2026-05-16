@@ -7,6 +7,6 @@ DEFAULT_CALL_ID = "C001"
 
 RISK_THRESHOLDS = {
     "safe": 0.3,
-    "warning": 0.7,
-    "danger": 1.0,
+    "warning": 0.5,
+    "danger": 0.7,
 }

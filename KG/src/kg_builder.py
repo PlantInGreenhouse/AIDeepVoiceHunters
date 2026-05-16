@@ -82,16 +82,14 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
         properties=detected_period
     ))
 
+    # summary는 여기서 만들지 않는다.
+    # LLM summary 생성 후 main.py에서 SpoofAssessment 노드에 주입한다.
     nodes.append(KGNode(
         id=spoof_assessment_node_id,
         type="SpoofAssessment",
         properties={
             "level": risk_level,
-            "confidence": confidence,
-            "summary": input_data.get(
-                "summary",
-                "현재 통화에서 딥보이스 의심 구간이 탐지되었습니다."
-            )
+            "confidence": confidence
         }
     ))
 
