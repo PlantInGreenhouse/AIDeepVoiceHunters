@@ -14,15 +14,13 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
     call_segment = input_data["callSegment"]
     detected_period = input_data["detectedPeriod"]
 
-    segment_start = call_segment["start"]
-    segment_end = call_segment["end"]
+    segment_point = call_segment["point"]
 
     risk_level = infer_risk_level(confidence)
 
     observed_issues = build_observed_issues(
         confidence=confidence,
-        segment_start=segment_start,
-        segment_end=segment_end
+        segment_point=segment_point
     )
 
     actions = build_actions(risk_level)

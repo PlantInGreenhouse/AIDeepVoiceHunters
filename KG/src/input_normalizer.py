@@ -15,8 +15,7 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
         "detectedSegments": [
             {
                 "segmentId": "SEG_C001_001",
-                "start": 8.2,
-                "end": 12.6,
+                "point": 8.2,
                 "confidence": 0.88
             }
         ]
@@ -24,7 +23,7 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
 
     The detection model is expected to output only:
     1. confidence score
-    2. detected call segment period: start, end
+    2. detected call segment period: point
     """
 
     call_id = raw_output["callId"]
@@ -41,8 +40,7 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     segment_id = primary_segment.get("segmentId", f"SEG_{call_id}_001")
-    segment_start = primary_segment["start"]
-    segment_end = primary_segment["end"]
+    segment_point = primary_segment["point"]
     confidence = primary_segment["confidence"]
 
     return {
@@ -72,26 +70,24 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
             "segmentId": segment_id,
             "label": "딥보이스 의심 구간",
             "description": "딥보이스 탐지 모델에서 조작 가능성이 높게 탐지된 구간입니다.",
-            "start": segment_start,
-            "end": segment_end,
+            "point": segment_point,
             "unit": "seconds",
             "confidence": confidence
         },
 
         "detectedPeriod": {
-            "start": segment_start,
-            "end": segment_end,
+            "point": segment_point,
             "unit": "seconds"
         },
 
         "spoofType": {
             "label": "DeepVoice",
-            "description": "딥보이스 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다.",
+            "description": "TTS 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다.",
             "candidates": [
                 {
                     "type": "DeepVoice",
                     "confidence": confidence,
-                    "description": "딥보이스 탐지 모델의 직접 출력입니다."
+                    "description": "TTS 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다."
                 }
             ]
         },
