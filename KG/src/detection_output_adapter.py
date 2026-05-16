@@ -1,5 +1,8 @@
 # src/detection_output_adapter.py
+
 """
+Example usage:
+
 from detection_output_adapter import create_detection_output_json
 
 confidence = 0.88
@@ -7,12 +10,13 @@ point = 8.2
 
 create_detection_output_json(
     confidence=confidence,
-    point=point,)    
+    point=point,
+)
 """
 
 import json
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from config import INPUT_PATH, DEFAULT_CALL_ID, DEFAULT_USER_ID
 
@@ -37,7 +41,6 @@ def build_detection_output(
 
     if point < 0:
         raise ValueError(f"point must be greater than or equal to 0. Got: {point}")
-
 
     if segment_id is None:
         segment_id = f"SEG_{DEFAULT_CALL_ID}_001"
@@ -85,7 +88,7 @@ def create_detection_output_json(
 
     detection_output = build_detection_output(
         confidence=confidence,
-        point=point
+        point=point,
     )
 
     save_detection_output(
@@ -97,24 +100,32 @@ def create_detection_output_json(
 
 
 def create_detection_output_json_from_model_output(
-    model_output: Dict[str, Any],
+    model_output: List[float],
     output_path: str = INPUT_PATH,
 ) -> Dict[str, Any]:
     """
-    Use this when the detection model returns a dictionary.
+    Use this when the detection model returns a list.
 
     Expected model_output:
-    {
-        "confidence": 0.88,
-        "callSegment": {
-            "point": 8.2
-        }
-    }
+    [
+        0.88,  # confidence
+        8.2    # point
+    ]
+
+    model_output[0] -> confidence
+    model_output[1] -> point
     """
 
-    confidence = model_output["confidence"]
-    point = model_output["callSegment"]["point"]
-    # end = model_output["callSegment"]["end"]
+    if not isinstance(model_output, list):
+        raise TypeError(f"model_output must be a list. Got: {type(model_output)}")
+
+    if len(model_output) < 2:
+        raise ValueError(
+            "model_output must contain at least two values: [confidence, point]"
+        )
+
+    confidence = float(model_output[0])
+    point = float(model_output[1])
 
     return create_detection_output_json(
         confidence=confidence,
@@ -124,7 +135,7 @@ def create_detection_output_json_from_model_output(
 
 
 if __name__ == "__main__":
-    # Example execution
+    # Example 1: 직접 confidence, point 전달
     output = create_detection_output_json(
         confidence=0.88,
         point=8.2,
@@ -132,3 +143,12 @@ if __name__ == "__main__":
 
     print(json.dumps(output, ensure_ascii=False, indent=2))
     print(f"Detection output saved to {INPUT_PATH}")
+
+    # Example 2: 모델 output 리스트에서 생성
+    model_output = [0.88, 8.2]
+
+    output_from_list = create_detection_output_json_from_model_output(
+        model_output=model_output
+    )
+
+    print(json.dumps(output_from_list, ensure_ascii=False, indent=2))
