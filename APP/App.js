@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   Animated,
   Image,
   Linking,
@@ -26,6 +25,7 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Phone,
   PhoneOff,
@@ -40,6 +40,8 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const FLOW_STEPS = [
   { title: '홈', detail: '등록된 가족 목소리 관리' },
@@ -51,10 +53,58 @@ const FLOW_STEPS = [
 
 const RECORD_SECONDS = 5;
 
+// AsyncStorage 키
+const STORAGE_KEYS = {
+  FAMILY_LIST: '@voicepass/familyList',
+  REPORT_HISTORY: '@voicepass/reportHistory',
+};
+
+
+// 음성 파일을 영구 저장 폴더로 복사
+
+async function saveAudioPermanently(tempUri, familyId) {
+  try {
+    // 음성 저장용 폴더 만들기 (없으면)
+    const voicesDir = `${FileSystem.documentDirectory}voices/`;
+    const dirInfo = await FileSystem.getInfoAsync(voicesDir);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(voicesDir, { intermediates: true });
+    }
+
+    // 영구 파일 경로 만들기
+    const permanentUri = `${voicesDir}voice_${familyId}.m4a`;
+
+    // 임시 파일을 영구 위치로 복사
+    await FileSystem.copyAsync({
+      from: tempUri,
+      to: permanentUri,
+    });
+
+    return permanentUri;
+  } catch (error) {
+    console.warn('음성 파일 영구 저장 실패:', error);
+    return tempUri;  // 실패하면 원래 경로 그대로 반환 (fallback)
+  }
+}
+
+// 가족 삭제 시 음성 파일도 함께 삭제
+async function deleteAudioFile(audioUri) {
+  try {
+    if (audioUri && audioUri.startsWith(FileSystem.documentDirectory)) {
+      const info = await FileSystem.getInfoAsync(audioUri);
+      if (info.exists) {
+        await FileSystem.deleteAsync(audioUri);
+      }
+    }
+  } catch (error) {
+    console.warn('음성 파일 삭제 실패:', error);
+  }
+}
+
 
 // 데모 음성 파일 (나중에 진짜 파일 넣을 자리)
-// const DEMO_CALL_AUDIO = require('./assets/demo_call.mp3');
-const DEMO_CALL_AUDIO = null;  // 임시: 파일 추가 전까지 null
+const DEMO_CALL_AUDIO = require('./assets/temp.m4a');
+
 
 // 경고 음성 파일 (나중에 본인이 만든 파일 넣을 자리)
 const WARNING_VOICE = require('./assets/warning_voice.mp3');
@@ -96,6 +146,90 @@ async function analyzeAudioChunk(elapsedSeconds, target) {
     timestamp: Date.now(),
     target: target.name,
   };
+}
+
+// 실제 서버 호출 (등록 음성 + 통화 음성 둘 다 보냄)
+
+
+const SERVER_URL = 'https://jawed-tarmac-hull.ngrok-free.dev';
+
+async function analyzeCallWithServer(target) {
+  try {
+    // 1. assets/temp.m4a 파일 경로 가져오기
+    //    require()로 가져온 건 그대로 못 보내고, 임시 파일로 복사해야 함
+    const Asset = require('expo-asset').Asset;
+    const callAudioAsset = Asset.fromModule(require('./assets/temp.m4a'));
+    await callAudioAsset.downloadAsync();
+    const callAudioUri = callAudioAsset.localUri || callAudioAsset.uri;
+
+    const userAudioInfo = await FileSystem.getInfoAsync(target.audioUri);
+    console.log('등록 음성 URI:', target.audioUri);
+    console.log('등록 음성 존재 여부:', userAudioInfo.exists);
+    console.log('등록 음성 크기:', userAudioInfo.size);
+
+    // 2. FormData 만들기
+    const formData = new FormData();
+    
+    // 등록 음성 (target.audioUri는 영구 저장된 경로)
+    formData.append('user_voice', {
+      uri: target.audioUri,
+      type: 'audio/m4a',
+      name: 'user_voice.m4a',
+    });
+    
+    // 통화 음성 (assets/temp.m4a)
+    formData.append('comparison_voice', {
+      uri: callAudioUri,
+      type: 'audio/m4a',
+      name: 'comparison_voice.m4a',
+    });
+
+    // 3. 서버 호출
+    console.log('서버로 음성 전송 중...');
+    const response = await fetch(`${SERVER_URL}/analyze`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`서버 오류 ${response.status}: ${errorText}`);
+    }
+
+    const graphJson = await response.json();
+    console.log('서버 응답 받음:', graphJson);
+    
+    return graphJson;
+    
+  } catch (error) {
+    console.error('❌ 서버 호출 실패:', error);
+    throw error;
+  }
+}
+
+function normalizeRiskScoreFromApi(apiResult, fallback = 0) {
+  const raw =
+    apiResult?.riskScore ??
+    apiResult?.risk_score ??
+    apiResult?.risk ??
+    apiResult?.spoofProbability ??
+    apiResult?.spoof_probability ??
+    fallback;
+
+  const num = Number(raw);
+
+  if (!Number.isFinite(num)) {
+    return Math.max(0, Math.min(100, Math.round(fallback)));
+  }
+
+  // 서버가 0.99처럼 확률값으로 보내면 99로 변환
+  // 서버가 99처럼 퍼센트로 보내면 그대로 99 사용
+  const percent = num >= 0 && num <= 1 ? num * 100 : num;
+
+  return Math.max(0, Math.min(100, Math.round(percent)));
 }
 
 function getLevelFromRisk(riskScore) {
@@ -145,19 +279,12 @@ function buildFallbackReport(callResult) {
   const riskScore = Math.round(callResult?.finalRisk || 0);
   const levelInfo = getLevelFromRisk(riskScore);
 
-  const similarity = Math.max(5, 100 - riskScore);
-  const confidence = Math.min(95, Math.max(60, riskScore + 12));
-  const spoofProbability = riskScore;
-
   return {
     level: levelInfo.level,
     label: levelInfo.label,
     color: levelInfo.color,
     backgroundColor: levelInfo.backgroundColor,
     riskScore,
-    similarity,
-    confidence,
-    spoofProbability,
     summary:
       riskScore >= DANGER_THRESHOLD
         ? '등록된 가족 음성과 현재 통화 음성의 차이가 크게 관찰되어 딥보이스 의심 상태로 분류되었습니다.'
@@ -166,62 +293,67 @@ function buildFallbackReport(callResult) {
         : '등록된 가족 음성과 현재 통화 음성이 대체로 일치합니다.',
     reasons:
       riskScore >= DANGER_THRESHOLD
-        ? [
-            '등록된 기준 음성과 현재 통화 음성의 화자 유사도가 낮게 측정되었습니다.',
-            '문장 끝 억양과 호흡 패턴이 평소 음성과 다르게 나타났습니다.',
-            '짧은 구간에서 합성음 또는 변조 음성으로 의심되는 패턴이 관찰되었습니다.',
-          ]
+        ? ['딥보이스 의심 신호가 감지되었습니다.']
         : riskScore >= WARNING_THRESHOLD
-        ? [
-            '일부 음성 구간에서 등록 음성과 차이가 관찰되었습니다.',
-            '통화 환경 또는 잡음에 의한 오차 가능성이 있어 추가 확인이 필요합니다.',
-          ]
-        : [
-            '등록된 기준 음성과 현재 통화 음성의 화자 특성이 대체로 일치합니다.',
-            '합성음으로 의심되는 뚜렷한 패턴이 발견되지 않았습니다.',
-          ],
+        ? ['일부 음성 구간에서 주의가 필요한 차이가 관찰되었습니다.']
+        : ['뚜렷한 딥보이스 의심 신호가 발견되지 않았습니다.'],
   };
+}
+
+function formatSpoofPoint(point) {
+  if (point === null || point === undefined) return null;
+
+  const num = Number(point);
+
+  // "소수점 둘째 자리에서 반올림" = 소수 첫째 자리까지 표시
+  if (Number.isFinite(num)) {
+    return String(Math.round(num * 10) / 10);
+  }
+
+  return String(point);
 }
 
 function normalizeModelReport(apiResult, fallback) {
   if (!apiResult) return fallback;
 
-  const riskScore = Math.round(
+  const rawRisk =
     apiResult.riskScore ??
-      apiResult.risk_score ??
-      apiResult.risk ??
-      apiResult.spoofProbability ??
-      fallback.riskScore
+    apiResult.risk_score ??
+    apiResult.risk ??
+    fallback.riskScore;
+
+  const riskScore = Math.round(
+    rawRisk <= 1 ? rawRisk * 100 : rawRisk
   );
 
   const levelInfo = getLevelFromRisk(riskScore);
 
+  const spoofPointRaw = apiResult.spoofPoint ?? apiResult.spoof_point;
+
+  const reasons = Array.isArray(spoofPointRaw)
+    ? spoofPointRaw.map((point) => `의심 지점: ${formatSpoofPoint(point)}`)
+    : spoofPointRaw !== undefined && spoofPointRaw !== null
+    ? [`의심 지점: ${formatSpoofPoint(spoofPointRaw)}`]
+    : fallback.reasons;
+
   return {
     ...fallback,
-    level: apiResult.level || levelInfo.level,
-    label: apiResult.label || levelInfo.label,
+    level: levelInfo.level,
+    label: levelInfo.label,
     color: levelInfo.color,
     backgroundColor: levelInfo.backgroundColor,
     riskScore,
-    similarity: Math.round(apiResult.similarity ?? fallback.similarity),
-    confidence: Math.round(apiResult.confidence ?? fallback.confidence),
-    spoofProbability: Math.round(
-      apiResult.spoofProbability ??
-        apiResult.spoof_probability ??
-        fallback.spoofProbability
-    ),
-    summary: apiResult.summary || apiResult.explanation || fallback.summary,
-    reasons:
-      apiResult.reasons ||
-      apiResult.observedIssues ||
-      apiResult.observed_issues ||
-      apiResult.evidence ||
-      fallback.reasons,
+    summary: apiResult.summary || fallback.summary,
+    reasons,
   };
 }
 
 async function requestModelReport({ callResult, target, guardian }) {
   const fallback = buildFallbackReport(callResult);
+
+  if (callResult?.graphResult) {
+    return normalizeModelReport(callResult.graphResult, fallback);
+  }
 
   if (!MODEL_REPORT_API_URL) {
     return fallback;
@@ -406,23 +538,93 @@ export default function App() {
   const [callResult, setCallResult] = useState(null);
   const [reportHistory, setReportHistory] = useState([]);
   const [selectedReportRecord, setSelectedReportRecord] = useState(null);
+  const [isLoaded, setIsLoaded] = useState(false);  // ← 추가: 초기 로드 완료 여부
+
+  // 앱 시작 시 저장된 데이터 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const savedFamily = await AsyncStorage.getItem(STORAGE_KEYS.FAMILY_LIST);
+        const savedReports = await AsyncStorage.getItem(STORAGE_KEYS.REPORT_HISTORY);
+
+        if (savedFamily) {
+          setFamilyList(JSON.parse(savedFamily));
+        }
+        if (savedReports) {
+          setReportHistory(JSON.parse(savedReports));
+        }
+      } catch (error) {
+        console.warn('저장된 데이터 로드 실패:', error);
+      } finally {
+        setIsLoaded(true);  // 로드 완료 표시
+      }
+    })();
+  }, []);
+
+  // familyList 변경 시 자동 저장
+  useEffect(() => {
+    if (!isLoaded) return;  // 초기 로드 전엔 저장 안 함 (빈 배열로 덮어쓰는 거 방지)
+    AsyncStorage.setItem(STORAGE_KEYS.FAMILY_LIST, JSON.stringify(familyList))
+      .catch((error) => console.warn('가족 목록 저장 실패:', error));
+  }, [familyList, isLoaded]);
+
+  // reportHistory 변경 시 자동 저장
+  useEffect(() => {
+    if (!isLoaded) return;
+    AsyncStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(reportHistory))
+      .catch((error) => console.warn('보고서 저장 실패:', error));
+  }, [reportHistory, isLoaded]);
 
   const currentStep = FLOW_STEPS[screenIndex];
+
+
   const progress = `${screenIndex + 1} / ${FLOW_STEPS.length}`;
 
   // 가족 추가
   const handleAddFamily = (data) => {
-    const newMember = {
-      id: Date.now().toString(),
-      ...data,
-    };
-    setFamilyList((prev) => [...prev, newMember]);
-    setScreenIndex(0);  // 홈으로
-    Alert.alert('등록 완료', `${data.name}님의 음성이 등록되었습니다.`);
+    // data에 이미 id가 포함되어 있음 (RegisterScreen에서 미리 생성)
+    setFamilyList((prev) => [...prev, data]);
+    setScreenIndex(0);
+  };
+
+  // 모든 데이터 초기화 (개발/테스트용)
+  const handleResetAllData = () => {
+    Alert.alert(
+      '데이터 초기화',
+      '모든 가족과 보고서를 삭제할까요? (되돌릴 수 없음)',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '삭제',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.multiRemove([
+              STORAGE_KEYS.FAMILY_LIST,
+              STORAGE_KEYS.REPORT_HISTORY,
+            ]);
+            setFamilyList([]);
+            setReportHistory([]);
+            Alert.alert('완료', '모든 데이터가 삭제되었습니다.');
+          },
+        },
+      ]
+    );
   };
 
   // 통화 시뮬레이션 시작 (가족 선택 후)
-  const handleStartCall = (target) => {
+  const handleStartCall = async (target) => {
+    const info = await FileSystem.getInfoAsync(target.audioUri);
+  
+    console.log('===== 선택된 가족 음성 확인 =====');
+    console.log('선택된 가족 ID:', target.id);
+    console.log('선택된 가족 이름:', target.name);
+    console.log('선택된 가족 관계:', target.relation);
+    console.log('선택된 가족 등록일:', target.registeredAt);
+    console.log('선택된 가족 audioUri:', target.audioUri);
+    console.log('선택된 가족 음성 존재:', info.exists);
+    console.log('선택된 가족 음성 크기:', info.size);
+    console.log('================================');
+  
     setCallTarget(target);
     setScreenIndex(3);  // 통화 화면으로
   };
@@ -465,6 +667,11 @@ export default function App() {
 
   // 가족 삭제
   const handleDeleteFamily = (id) => {
+    
+    const memberToDelete = familyList.find((m) => m.id === id);
+    if (memberToDelete?.audioUri) {
+      deleteAudioFile(memberToDelete.audioUri);
+    }
     setFamilyList((prev) => prev.filter((m) => m.id !== id));
   };
 
@@ -747,17 +954,25 @@ function RegisterScreen({ onBack, onComplete }) {
 
   const canSubmit = name.trim() && relation.trim() && recordedUri;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) {
       Alert.alert('확인', '이름·관계·5초 녹음을 모두 완료해주세요.');
       return;
     }
+
+    // 가족 ID 미리 생성
+    const familyId = Date.now().toString();
+
+    // 음성 파일을 영구 저장소로 복사
+    const permanentUri = await saveAudioPermanently(recordedUri, familyId);
+
     onComplete({
+      id: familyId,                              
       name: name.trim(),
       relation: relation.trim(),
       phone: phone.trim(),
       isGuardian,                                  
-      audioUri: recordedUri,
+      audioUri: permanentUri,                   
       registeredAt: new Date().toISOString(),
     });
   };
@@ -919,6 +1134,13 @@ function CallScreen({ target, onEnd }) {
   const [warningTriggered, setWarningTriggered] = useState(false); 
   const [dangerTriggered, setDangerTriggered] = useState(false); 
 
+  const [dangerOverlayVisible, setDangerOverlayVisible] = useState(false);
+  const [dangerOverlayShown, setDangerOverlayShown] = useState(false);
+
+  const [serverResult, setServerResult] = useState(null);
+  const [serverAnalyzing, setServerAnalyzing] = useState(false);
+  const riskAnimationTimerRef = useRef(null);
+
   const player = DEMO_CALL_AUDIO ? useAudioPlayer(DEMO_CALL_AUDIO) : null;
   const warningPlayer = WARNING_VOICE ? useAudioPlayer(WARNING_VOICE) : null;  
   const dangerPlayer = DANGER_VOICE ? useAudioPlayer(DANGER_VOICE) : null;    
@@ -932,18 +1154,6 @@ function CallScreen({ target, onEnd }) {
     return () => clearInterval(timer);
   }, [phase]);
 
-  // 위험도 분석
-  useEffect(() => {
-    if (phase !== 'active') return;
-    let localElapsed = 0;
-    const interval = setInterval(async () => {
-      localElapsed += ANALYSIS_INTERVAL / 1000;
-      const result = await analyzeAudioChunk(localElapsed, target);
-      setRiskScore(result.risk);
-      setRiskHistory((prev) => [...prev, result.risk].slice(-30));
-    }, ANALYSIS_INTERVAL);
-    return () => clearInterval(interval);
-  }, [phase, target]);
 
   // 위험 임계값 도달 시 경고
   useEffect(() => {
@@ -993,14 +1203,90 @@ function CallScreen({ target, onEnd }) {
     }
   }, [phase, riskScore, dangerTriggered]);
 
+
+
+  const animateRiskTo = (targetRisk) => {
+    return new Promise((resolve) => {
+      const steps = 5;
+      const intervalMs = 350;
+  
+      if (riskAnimationTimerRef.current) {
+        clearInterval(riskAnimationTimerRef.current);
+      }
+  
+      let step = 0;
+      const startRisk = 0;
+  
+      setRiskScore(startRisk);
+      setRiskHistory([startRisk]);
+  
+      riskAnimationTimerRef.current = setInterval(() => {
+        step += 1;
+  
+        const nextRisk =
+          step >= steps
+            ? targetRisk
+            : Math.round(startRisk + ((targetRisk - startRisk) * step) / steps);
+  
+        setRiskScore(nextRisk);
+        setRiskHistory((prev) => [...prev, nextRisk].slice(-30));
+  
+        if (step >= steps) {
+          clearInterval(riskAnimationTimerRef.current);
+          riskAnimationTimerRef.current = null;
+          resolve();
+        }
+      }, intervalMs);
+    });
+  };
+  
+  useEffect(() => {
+    return () => {
+      if (riskAnimationTimerRef.current) {
+        clearInterval(riskAnimationTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleAccept = async () => {
     setPhase('active');
+  
     if (player) {
       try {
         player.play();
       } catch (e) {
         console.warn('음성 재생 실패', e);
       }
+    }
+  
+    setServerAnalyzing(true);
+  
+    try {
+      const graphJson = await analyzeCallWithServer(target);
+  
+      console.log('서버 raw riskScore:', graphJson?.riskScore, typeof graphJson?.riskScore);
+  
+      const serverRisk = normalizeRiskScoreFromApi(graphJson, 0);
+  
+      console.log('앱 변환 riskScore:', serverRisk);
+  
+      setServerResult(graphJson);
+      setServerAnalyzing(false);
+  
+      await animateRiskTo(serverRisk);
+
+      if (serverRisk >= DANGER_THRESHOLD) {
+        setWarningShown(true);
+        setDangerOverlayShown(true);
+        setDangerOverlayVisible(true);
+      }
+    } catch (error) {
+      setServerAnalyzing(false);
+  
+      Alert.alert(
+        '서버 분석 실패',
+        '통화 음성 분석 결과를 받아오지 못했습니다.\n\n' + error.message
+      );
     }
   };
 
@@ -1016,15 +1302,22 @@ function CallScreen({ target, onEnd }) {
     if (player) player.pause();
     if (warningPlayer) warningPlayer.pause();
     if (dangerPlayer) dangerPlayer.pause();
-    Vibration.cancel();                           
+    Vibration.cancel();
+  
+    const normalizedFinalRisk = normalizeRiskScoreFromApi(serverResult, riskScore);
+  
     onEnd({
       rejected: false,
       target,
       duration: elapsedSec,
-      finalRisk: riskScore,
+      finalRisk: normalizedFinalRisk,
       riskHistory,
+      graphResult: serverResult,
     });
   };
+  
+    
+  
 
   const formatTime = (sec) => {
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
@@ -1112,7 +1405,9 @@ function CallScreen({ target, onEnd }) {
           <Phone size={14} color="#10B981" />
           <Text style={styles.callTimerText}>{formatTime(elapsedSec)}</Text>
           <View style={styles.callTimerDot} />
-          <Text style={styles.callTimerLabel}>실시간 분석 중</Text>
+          <Text style={styles.callTimerLabel}>
+            {serverAnalyzing ? '서버 분석 중' : '실시간 분석 중'}
+          </Text>
         </View>
         <Text style={styles.callActiveName}>{target.name}</Text>
         <Text style={styles.callActivePhone}>
@@ -1207,6 +1502,46 @@ function CallScreen({ target, onEnd }) {
           <PhoneOff size={26} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {dangerOverlayVisible && (
+        <View style={styles.deepVoiceOverlay}>
+          <View style={styles.deepVoiceDim} />
+
+          <View style={styles.deepVoiceModal}>
+            <View style={styles.deepVoiceIconCircle}>
+              <AlertTriangle size={34} color="#FFFFFF" />
+            </View>
+
+            <Text style={styles.deepVoiceTitle}>딥보이스 위험 감지</Text>
+
+            <Text style={styles.deepVoiceDesc}>
+              {target?.name || '가족'}님으로 표시된 통화에서 의심 신호가 감지되었습니다.
+              {'\n'}저장된 가족 번호로 직접 재확인하세요.
+            </Text>
+
+            <View style={styles.deepVoiceScoreBox}>
+              <Text style={styles.deepVoiceScoreLabel}>위험도</Text>
+              <Text style={styles.deepVoiceScoreValue}>{riskScore}%</Text>
+            </View>
+
+            <View style={styles.deepVoiceButtonRow}>
+              <TouchableOpacity
+                style={styles.deepVoiceGhostButton}
+                onPress={() => setDangerOverlayVisible(false)}
+              >
+                <Text style={styles.deepVoiceGhostText}>통화 계속</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.deepVoicePrimaryButton}
+                onPress={handleEnd}
+              >
+                <Text style={styles.deepVoicePrimaryText}>결과 보기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -1327,18 +1662,9 @@ function ResultReportScreen({
             <Text style={[styles.reportScoreValue, { color: report.color }]}>
               {report.riskScore}%
             </Text>
-            <Text style={styles.reportScoreLabel}>위험도</Text>
+            <Text style={styles.reportScoreLabel}>딥보이스 위험도</Text>
           </View>
 
-          <View style={styles.reportScoreBox}>
-            <Text style={styles.reportScoreValue}>{report.similarity}%</Text>
-            <Text style={styles.reportScoreLabel}>음성 유사도</Text>
-          </View>
-
-          <View style={styles.reportScoreBox}>
-            <Text style={styles.reportScoreValue}>{report.confidence}%</Text>
-            <Text style={styles.reportScoreLabel}>모델 신뢰도</Text>
-          </View>
         </View>
       </View>
 
@@ -1424,7 +1750,7 @@ function ResultReportScreen({
         </View>
 
         <View style={styles.kgRow}>
-          <Text style={styles.kgNode}>Confidence</Text>
+          <Text style={styles.kgNode}>RiskScore</Text>
           <Text style={styles.kgArrow}>→</Text>
           <Text style={styles.kgNode}>UserAction</Text>
         </View>
@@ -1441,7 +1767,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   header: {
     paddingHorizontal: 20,
@@ -2330,5 +2655,137 @@ const styles = StyleSheet.create({
     color: '#DC2626',
     fontSize: 11,
     fontWeight: '800',
+  },
+  deepVoiceOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  
+  deepVoiceDim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 18, 48, 0.58)',
+  },
+  
+  deepVoiceModal: {
+    width: '100%',
+    borderRadius: 28,
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.55)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
+    elevation: 16,
+  },
+  
+  deepVoiceIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  
+  deepVoiceTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#111827',
+    marginBottom: 10,
+    letterSpacing: -0.4,
+  },
+  
+  deepVoiceDesc: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#4B5563',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  
+  deepVoiceScoreBox: {
+    marginTop: 20,
+    marginBottom: 20,
+    minWidth: 130,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  
+  deepVoiceScoreLabel: {
+    fontSize: 12,
+    color: '#991B1B',
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  
+  deepVoiceScoreValue: {
+    fontSize: 36,
+    color: '#EF4444',
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  
+  deepVoiceButtonRow: {
+    width: '100%',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  
+  deepVoiceGhostButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  
+  deepVoiceGhostText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  
+  deepVoicePrimaryButton: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  
+  deepVoicePrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });
