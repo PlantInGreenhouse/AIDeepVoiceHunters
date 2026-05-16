@@ -1,5 +1,3 @@
-# kg_builder.py: Knowledge Graph 생성 및 관리
-
 # src/kg_builder.py
 
 from typing import Dict, List
@@ -11,9 +9,7 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
     call_id = input_data["callId"]
     user_id = input_data["userId"]
 
-    spoof_probability = input_data["spoofProbability"]
-    similarity = input_data.get("similarity", 0.27)
-    confidence = input_data.get("confidence", spoof_probability)
+    confidence = input_data["confidence"]
 
     call_segment = input_data["callSegment"]
     detected_period = input_data["detectedPeriod"]
@@ -21,11 +17,10 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
     segment_start = call_segment["start"]
     segment_end = call_segment["end"]
 
-    risk_level = infer_risk_level(spoof_probability)
+    risk_level = infer_risk_level(confidence)
 
     observed_issues = build_observed_issues(
-        similarity=similarity,
-        spoof_probability=spoof_probability,
+        confidence=confidence,
         segment_start=segment_start,
         segment_end=segment_end
     )
@@ -38,7 +33,7 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
     edges: List[KGEdge] = []
 
     # -------------------------
-    # Core Nodes
+    # Core Node IDs
     # -------------------------
 
     call_node_id = f"call:{call_id}"
@@ -48,6 +43,10 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
     detected_period_node_id = f"detectedPeriod:{call_id}"
     spoof_assessment_node_id = f"spoofAssessment:{call_id}"
 
+    # -------------------------
+    # Core Nodes
+    # -------------------------
+
     nodes.append(KGNode(
         id=call_node_id,
         type="Call",
@@ -55,9 +54,7 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
             "callId": call_id,
             "userId": user_id,
             "level": risk_level,
-            "confidence": confidence,
-            "spoofProbability": spoof_probability,
-            "similarity": similarity
+            "confidence": confidence
         }
     ))
 
@@ -91,11 +88,9 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
         properties={
             "level": risk_level,
             "confidence": confidence,
-            "spoofProbability": spoof_probability,
-            "similarity": similarity,
             "summary": input_data.get(
                 "summary",
-                "현재 통화에서 조작 음성 가능성이 탐지되었습니다."
+                "현재 통화에서 딥보이스 의심 구간이 탐지되었습니다."
             )
         }
     ))
@@ -138,7 +133,7 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
                 target=candidate_node_id,
                 type="HAS_CANDIDATE",
                 properties={
-                    "probability": candidate["probability"]
+                    "confidence": candidate["confidence"]
                 }
             ))
 
@@ -220,19 +215,11 @@ def build_voice_kg(input_data: Dict) -> KnowledgeGraph:
             type="HAS_DETECTED_PERIOD"
         ),
         KGEdge(
-            source=user_voice_node_id,
-            target=comparison_voice_node_id,
-            type="COMPARED_WITH",
-            properties={
-                "similarity": similarity
-            }
-        ),
-        KGEdge(
             source=segment_node_id,
             target=spoof_assessment_node_id,
-            type="INDICATES_SPOOF",
+            type="INDICATES_DEEPVOICE",
             properties={
-                "spoofProbability": spoof_probability
+                "confidence": confidence
             }
         )
     ])

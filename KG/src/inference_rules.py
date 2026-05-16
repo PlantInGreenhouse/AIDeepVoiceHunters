@@ -1,52 +1,76 @@
-# inference_rules.py: spoofProbabiity 기반 위험도, observedIssues, action 생성
-
-
 # src/inference_rules.py
 
 from typing import Dict, List
 
 
-def infer_risk_level(spoof_probability: float) -> str:
-    if spoof_probability >= 0.7:
+def infer_risk_level(confidence: float) -> str:
+    """
+    Infer risk level from DeepVoice detection confidence.
+
+    confidence:
+    - 0.7 이상: danger
+    - 0.5 이상: warning
+    - 그 미만: safe
+    """
+
+    if confidence >= 0.7:
         return "danger"
-    elif spoof_probability >= 0.3:
+    elif confidence >= 0.5:
         return "warning"
     return "safe"
 
 
 def build_observed_issues(
-    similarity: float,
-    spoof_probability: float,
+    confidence: float,
     segment_start: float,
     segment_end: float
 ) -> List[Dict]:
+    """
+    Build observed issues using only model confidence and detected segment period.
+
+    The model output does not include:
+    - spoofProbability
+    - similarity
+
+    Therefore, issues must not mention speaker similarity or spoof probability.
+    """
+
     issues = []
 
-    if similarity < 0.4:
+    if confidence >= 0.7:
         issues.append({
-            "issue": "등록 음성과 현재 음성의 화자 유사도 낮음",
-            "evidenceType": "speaker_similarity",
-            "score": similarity,
+            "issue": "딥보이스 의심 구간 탐지",
+            "evidenceType": "deepvoice_detection_confidence",
+            "score": confidence,
             "severity": "high",
-            "description": "등록된 기준 음성과 현재 통화 음성의 화자 특성이 충분히 일치하지 않습니다."
+            "description": (
+                f"{segment_start}초부터 {segment_end}초 구간에서 "
+                f"딥보이스 조작 가능성이 높은 신호가 탐지되었습니다."
+            )
         })
 
-    if spoof_probability >= 0.7:
+    elif confidence >= 0.5:
         issues.append({
-            "issue": "짧은 구간에서 합성음 의심 특징 검출",
-            "evidenceType": "localized_spoof_signal",
-            "score": spoof_probability,
-            "severity": "high",
-            "description": f"{segment_start}초부터 {segment_end}초 구간에서 조작 음성 확률이 높게 나타났습니다."
-        })
-
-    if spoof_probability >= 0.5:
-        issues.append({
-            "issue": "음성 조작 가능성 탐지",
-            "evidenceType": "spoof_probability",
-            "score": spoof_probability,
+            "issue": "딥보이스 의심 가능성 탐지",
+            "evidenceType": "deepvoice_detection_confidence",
+            "score": confidence,
             "severity": "medium",
-            "description": "전체 통화 음성에서 조작 가능성을 시사하는 특징이 관측되었습니다."
+            "description": (
+                f"{segment_start}초부터 {segment_end}초 구간에서 "
+                f"딥보이스 의심 신호가 탐지되었습니다."
+            )
+        })
+
+    else:
+        issues.append({
+            "issue": "딥보이스 탐지 신뢰도 낮음",
+            "evidenceType": "deepvoice_detection_confidence",
+            "score": confidence,
+            "severity": "low",
+            "description": (
+                f"{segment_start}초부터 {segment_end}초 구간에서 탐지는 수행되었지만, "
+                f"딥보이스로 판단할 만큼의 신뢰도는 낮습니다."
+            )
         })
 
     return issues
@@ -64,11 +88,6 @@ def build_actions(risk_level: str) -> List[Dict]:
                 "title": "송금 및 인증번호 전달 중단하기",
                 "detail": "상대방이 금전, 계좌, 인증번호, 개인정보를 요구했다면 즉시 중단하세요.",
                 "priority": "high"
-            },
-            {
-                "title": "대화 내용 캡처 및 신고 준비하기",
-                "detail": "의심스러운 요청이 있었다면 통화 시간, 번호, 요구 내용을 기록해두세요.",
-                "priority": "medium"
             }
         ]
 

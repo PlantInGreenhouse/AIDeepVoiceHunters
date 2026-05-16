@@ -6,7 +6,7 @@ from typing import Dict, Any, List
 
 def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Convert deepvoice detection model output into the standard KG input format.
+    Convert DeepVoice detection model output into the standard KG input format.
 
     Expected raw_output format:
     {
@@ -17,47 +17,39 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
                 "segmentId": "SEG_C001_001",
                 "start": 8.2,
                 "end": 12.6,
-                "confidence": 0.88,
-                "spoofProbability": 0.84
+                "confidence": 0.88
             }
         ]
     }
+
+    The detection model is expected to output only:
+    1. confidence score
+    2. detected call segment period: start, end
     """
 
     call_id = raw_output["callId"]
-    user_id = raw_output.get("userId", "UNKNOWN_USER")
+    user_id = raw_output["userId"]
 
     detected_segments: List[Dict[str, Any]] = raw_output["detectedSegments"]
 
     if not detected_segments:
         raise ValueError("detectedSegments must contain at least one segment.")
 
-    # 현재 kg_builder.py가 단일 callSegment 기준이라면
-    # 1차 구현에서는 가장 spoofProbability가 높은 구간을 대표 구간으로 사용한다.
+    # 1차 구현에서는 confidence가 가장 높은 구간을 대표 구간으로 사용한다.
     primary_segment = max(
         detected_segments,
-        key=lambda segment: segment["spoofProbability"]
+        key=lambda segment: segment["confidence"]
     )
 
     segment_id = primary_segment.get("segmentId", f"SEG_{call_id}_001")
     segment_start = primary_segment["start"]
     segment_end = primary_segment["end"]
-    spoof_probability = primary_segment["spoofProbability"]
-    confidence = primary_segment.get("confidence", spoof_probability)
+    confidence = primary_segment["confidence"]
 
     return {
         "callId": call_id,
         "userId": user_id,
-
-        "spoofProbability": spoof_probability,
         "confidence": confidence,
-
-        # similarity는 아직 탐지 모델 출력에 없으므로 기본값을 둔다.
-        # 나중에 speaker verification 모델을 붙이면 여기서 실제 값으로 교체하면 된다.
-        "similarity": raw_output.get("similarity", 0.27),
-
-        "summary": "현재 통화에서 딥보이스 의심 구간이 탐지되었습니다.",
-
         "userVoice": {
             "nodeType": "UserVoice",
             "voiceId": f"UV_{user_id}",
@@ -84,8 +76,7 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
             "start": segment_start,
             "end": segment_end,
             "unit": "seconds",
-            "confidence": confidence,
-            "spoofProbability": spoof_probability
+            "confidence": confidence
         },
 
         "detectedPeriod": {
@@ -100,14 +91,14 @@ def normalize_detection_output(raw_output: Dict[str, Any]) -> Dict[str, Any]:
             "candidates": [
                 {
                     "type": "DeepVoice",
-                    "probability": spoof_probability,
+                    "confidence": confidence,
                     "description": "딥보이스 탐지 모델의 직접 출력입니다."
                 }
             ]
         },
 
-        # 전체 탐지 구간도 보존한다.
-        # 현재 kg_builder.py가 단일 segment만 처리하더라도
-        # 나중에 multi-segment KG로 확장할 때 이 필드를 사용할 수 있다.
+        # 전체 탐지 구간 보존.
+        # 현재 kg_builder.py는 대표 구간만 사용하지만,
+        # 나중에 multi-segment KG로 확장할 때 사용할 수 있다.
         "detectedSegments": detected_segments
     }
