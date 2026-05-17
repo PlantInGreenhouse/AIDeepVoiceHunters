@@ -823,12 +823,18 @@ export default function App() {
 function AppInner() {
   const { showAlert } = useAlert();
   const [screenIndex, setScreenIndex] = useState(0);
+  const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [familyList, setFamilyList] = useState([]);
   const [callTarget, setCallTarget] = useState(null);
   const [callResult, setCallResult] = useState(null);
   const [reportHistory, setReportHistory] = useState([]);
   const [selectedReportRecord, setSelectedReportRecord] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);  // ← 추가: 초기 로드 완료 여부
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowCustomSplash(false), 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 앱 시작 시 저장된 데이터 로드
   useEffect(() => {
@@ -864,6 +870,22 @@ function AppInner() {
     AsyncStorage.setItem(STORAGE_KEYS.REPORT_HISTORY, JSON.stringify(reportHistory))
       .catch((error) => console.warn('보고서 저장 실패:', error));
   }, [reportHistory, isLoaded]);
+
+  if (showCustomSplash) {
+    return (
+      <View style={{ 
+        flex: 1, 
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        <Image 
+          source={require('./assets/splash-icon.png')}
+          style={{ width: '70%', height: '70%', resizeMode: 'contain' }}
+        />
+      </View>
+    );
+  }
 
   const currentStep = FLOW_STEPS[screenIndex];
 
