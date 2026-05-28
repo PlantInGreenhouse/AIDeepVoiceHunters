@@ -1,0 +1,18 @@
+{
+  "callId": "C001",
+  "userId": "U001",
+  "detectedSegments": [
+    {
+      "segmentId": "SEG_C001_001",
+      "start": 8.2,
+      "end": 12.6,
+      "confidence": 0.88
+    },
+    {
+      "segmentId": "SEG_C001_002",
+      "start": 31.4,
+      "end": 36.9,
+      "confidence": 0.74
+    }
+  ]
+}
