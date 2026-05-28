@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python eval.py --config ./config/AASIST.conf

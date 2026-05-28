@@ -1,0 +1,212 @@
+{
+  "graphId": "KG_C001",
+  "nodes": [
+    {
+      "id": "call:C001",
+      "type": "Call",
+      "properties": {
+        "callId": "C001",
+        "userId": "U001",
+        "level": "danger",
+        "confidence": 0.9590746760368347
+      }
+    },
+    {
+      "id": "UV_U001",
+      "type": "UserVoice",
+      "properties": {
+        "nodeType": "UserVoice",
+        "voiceId": "UV_U001",
+        "label": "등록된 기준 음성",
+        "description": "사용자가 사전에 등록한 기준 음성입니다.",
+        "registeredAt": null,
+        "audioRef": null
+      }
+    },
+    {
+      "id": "comparisonVoice:C001",
+      "type": "ComparisonVoice",
+      "properties": {
+        "nodeType": "ComparisonVoice",
+        "callId": "C001",
+        "label": "현재 통화 음성",
+        "description": "실시간 통화에서 입력된 비교 대상 음성입니다.",
+        "recordedAt": "2026-05-17T01:03:17.546265",
+        "audioRef": null
+      }
+    },
+    {
+      "id": "SEG_C001_001",
+      "type": "CallSegment",
+      "properties": {
+        "nodeType": "CallSegment",
+        "segmentId": "SEG_C001_001",
+        "label": "딥보이스 의심 구간",
+        "description": "딥보이스 탐지 모델에서 조작 가능성이 높게 탐지된 구간입니다.",
+        "point": 3.32658314704895,
+        "unit": "seconds",
+        "confidence": 0.9590746760368347
+      }
+    },
+    {
+      "id": "detectedPeriod:C001",
+      "type": "DetectedPeriod",
+      "properties": {
+        "point": 3.32658314704895,
+        "unit": "seconds"
+      }
+    },
+    {
+      "id": "spoofAssessment:C001",
+      "type": "SpoofAssessment",
+      "properties": {
+        "level": "danger",
+        "confidence": 0.9590746760368347,
+        "summary": "딥보이스 탐지 가능성이 높은 3.33초 부근에서 의심 신호가 탐지되어, 위험도가 높습니다. 저장된 번호로 직접 확인하거나 송금 및 인증번호 전달을 중단하는 것이 권장됩니다."
+      }
+    },
+    {
+      "id": "spoofType:C001",
+      "type": "SpoofType",
+      "properties": {
+        "label": "DeepVoice",
+        "description": "TTS 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다."
+      }
+    },
+    {
+      "id": "spoofCandidate:C001:DeepVoice",
+      "type": "SpoofCandidate",
+      "properties": {
+        "type": "DeepVoice",
+        "confidence": 0.9590746760368347,
+        "description": "TTS 또는 음성 합성/변환 기반 조작 가능성이 탐지되었습니다."
+      }
+    },
+    {
+      "id": "observedIssue:C001:1",
+      "type": "ObservedIssue",
+      "properties": {
+        "issue": "딥보이스 의심 구간 탐지",
+        "evidenceType": "deepvoice_detection_confidence",
+        "score": 0.9590746760368347,
+        "severity": "high",
+        "description": "3.32658314704895부근에서 딥보이스 조작 가능성이 높은 신호가 탐지되었습니다."
+      }
+    },
+    {
+      "id": "action:C001:1",
+      "type": "UserAction",
+      "properties": {
+        "title": "저장된 번호로 직접 재확인하기",
+        "detail": "현재 통화를 끊고 기존에 저장된 가족 번호로 다시 연락하세요.",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "action:C001:2",
+      "type": "UserAction",
+      "properties": {
+        "title": "송금 및 인증번호 전달 중단하기",
+        "detail": "상대방이 금전, 계좌, 인증번호, 개인정보를 요구했다면 즉시 중단하세요.",
+        "priority": "high"
+      }
+    },
+    {
+      "id": "action:C001:3",
+      "type": "UserAction",
+      "properties": {
+        "title": "경찰 및 금융기관 신고하기",
+        "detail": "딥보이스 사기 피해가 의심됩니다. 가까운 경찰서나 금융기관에 신고하여 추가 피해를 방지하세요.",
+        "priority": "high"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "spoofAssessment:C001",
+      "target": "spoofType:C001",
+      "type": "HAS_SPOOF_TYPE",
+      "properties": {}
+    },
+    {
+      "source": "spoofType:C001",
+      "target": "spoofCandidate:C001:DeepVoice",
+      "type": "HAS_CANDIDATE",
+      "properties": {
+        "confidence": 0.9590746760368347
+      }
+    },
+    {
+      "source": "SEG_C001_001",
+      "target": "observedIssue:C001:1",
+      "type": "HAS_OBSERVED_ISSUE",
+      "properties": {
+        "evidenceType": "deepvoice_detection_confidence",
+        "score": 0.9590746760368347,
+        "severity": "high"
+      }
+    },
+    {
+      "source": "observedIssue:C001:1",
+      "target": "spoofAssessment:C001",
+      "type": "SUPPORTS_ASSESSMENT",
+      "properties": {}
+    },
+    {
+      "source": "spoofAssessment:C001",
+      "target": "action:C001:1",
+      "type": "RECOMMENDS_ACTION",
+      "properties": {
+        "priority": "high"
+      }
+    },
+    {
+      "source": "spoofAssessment:C001",
+      "target": "action:C001:2",
+      "type": "RECOMMENDS_ACTION",
+      "properties": {
+        "priority": "high"
+      }
+    },
+    {
+      "source": "spoofAssessment:C001",
+      "target": "action:C001:3",
+      "type": "RECOMMENDS_ACTION",
+      "properties": {
+        "priority": "high"
+      }
+    },
+    {
+      "source": "call:C001",
+      "target": "UV_U001",
+      "type": "HAS_REGISTERED_VOICE",
+      "properties": {}
+    },
+    {
+      "source": "call:C001",
+      "target": "comparisonVoice:C001",
+      "type": "HAS_COMPARISON_VOICE",
+      "properties": {}
+    },
+    {
+      "source": "comparisonVoice:C001",
+      "target": "SEG_C001_001",
+      "type": "HAS_SEGMENT",
+      "properties": {}
+    },
+    {
+      "source": "SEG_C001_001",
+      "target": "detectedPeriod:C001",
+      "type": "HAS_DETECTED_PERIOD",
+      "properties": {}
+    },
+    {
+      "source": "SEG_C001_001",
+      "target": "spoofAssessment:C001",
+      "type": "INDICATES_DEEPVOICE",
+      "properties": {
+        "confidence": 0.9590746760368347
+      }
+    }
+  ]
+}

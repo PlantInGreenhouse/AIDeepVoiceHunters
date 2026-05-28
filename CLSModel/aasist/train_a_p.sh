@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 python train_aasist_pass.py --config ./config/AASIST.conf

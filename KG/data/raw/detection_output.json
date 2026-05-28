@@ -1,0 +1,11 @@
+{
+  "callId": "C001",
+  "userId": "U001",
+  "detectedSegments": [
+    {
+      "segmentId": "SEG_C001_001",
+      "point": 3.32658314704895,
+      "confidence": 0.9590746760368347
+    }
+  ]
+}
